@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -90,6 +91,18 @@ public class GlobalExceptionHandler {
                 ErrorCode.VALIDATION_FAILED.getErrorCode(),
                 ErrorCode.VALIDATION_FAILED.getDefaultMessage(),
                 details,
+                request);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<CommonApiResponse<Void>> handleAccessDenied(
+            AccessDeniedException ex,
+            WebRequest request) {
+        return buildErrorResponse(
+                ErrorCode.FORBIDDEN.getHttpStatus(),
+                ErrorCode.FORBIDDEN.getErrorCode(),
+                ErrorCode.FORBIDDEN.getDefaultMessage(),
+                Map.of(),
                 request);
     }
 

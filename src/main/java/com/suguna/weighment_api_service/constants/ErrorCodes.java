@@ -18,6 +18,10 @@ public final class ErrorCodes {
     public static final String UNAUTHORIZED = "UNAUTHORIZED";
     public static final String FORBIDDEN = "FORBIDDEN";
     public static final String ACTIVATION_REQUIRED = "ACTIVATION_REQUIRED";
+    public static final String DEVICE_NOT_CONFIGURED = "DEVICE_NOT_CONFIGURED";
+    public static final String DEVICE_DISABLED = "DEVICE_DISABLED";
+    public static final String SUPERVISOR_INACTIVE = "SUPERVISOR_INACTIVE";
+    public static final String UNAUTHORIZED_DEVICE = "UNAUTHORIZED_DEVICE";
 
     // --- Reference / state (404 / 409) ---
     public static final String NOT_FOUND = "NOT_FOUND";

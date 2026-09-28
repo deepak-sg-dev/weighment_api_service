@@ -18,6 +18,22 @@ public enum ErrorCode {
             "Device is not configured in ERP",
             HttpStatus.FORBIDDEN,
             false),
+    DEVICE_NOT_CONFIGURED(
+            ErrorCodes.DEVICE_NOT_CONFIGURED,
+            "Device is not mapped to a supervisor in ERP",
+            HttpStatus.FORBIDDEN,
+            false),
+    DEVICE_DISABLED(ErrorCodes.DEVICE_DISABLED, "Device is disabled", HttpStatus.FORBIDDEN, false),
+    SUPERVISOR_INACTIVE(
+            ErrorCodes.SUPERVISOR_INACTIVE,
+            "Supervisor is inactive",
+            HttpStatus.FORBIDDEN,
+            false),
+    UNAUTHORIZED_DEVICE(
+            ErrorCodes.UNAUTHORIZED_DEVICE,
+            "Device is not authorized",
+            HttpStatus.UNAUTHORIZED,
+            false),
 
     NOT_FOUND(ErrorCodes.NOT_FOUND, "Reference not found", HttpStatus.NOT_FOUND, false),
     CONFLICT(ErrorCodes.CONFLICT, "Resource conflict", HttpStatus.CONFLICT, false),
