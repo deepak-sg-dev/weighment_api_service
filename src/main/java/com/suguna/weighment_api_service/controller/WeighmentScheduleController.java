@@ -1,11 +1,15 @@
 package com.suguna.weighment_api_service.controller;
 
+import com.suguna.weighment_api_service.dto.weighment.otp.ScheduleOtpStatusResponse;
+import com.suguna.weighment_api_service.dto.weighment.otp.VerifyPartyOtpRequest;
+import com.suguna.weighment_api_service.dto.weighment.otp.VerifyPartyOtpResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.MarkScheduleDownloadedRequest;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleActionResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.StartScheduleRequest;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
+import com.suguna.weighment_api_service.service.ScheduleOtpService;
 import com.suguna.weighment_api_service.service.ScheduleService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -25,9 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class WeighmentScheduleController {
 
     private final ScheduleService scheduleService;
+    private final ScheduleOtpService scheduleOtpService;
 
-    public WeighmentScheduleController(ScheduleService scheduleService) {
+    public WeighmentScheduleController(ScheduleService scheduleService, ScheduleOtpService scheduleOtpService) {
         this.scheduleService = scheduleService;
+        this.scheduleOtpService = scheduleOtpService;
     }
 
     @GetMapping
@@ -58,5 +64,19 @@ public class WeighmentScheduleController {
             @PathVariable String scheduleId,
             @Valid @RequestBody StartScheduleRequest request) {
         return ResponseEntity.ok(scheduleService.startSchedule(supervisor, scheduleId, request));
+    }
+
+    @GetMapping("/{scheduleId}/otp")
+    public ResponseEntity<ScheduleOtpStatusResponse> getOtpStatus(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor, @PathVariable String scheduleId) {
+        return ResponseEntity.ok(scheduleOtpService.getOtpStatus(supervisor, scheduleId));
+    }
+
+    @PostMapping("/{scheduleId}/otp/verify")
+    public ResponseEntity<VerifyPartyOtpResponse> verifyPartyOtp(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @PathVariable String scheduleId,
+            @Valid @RequestBody VerifyPartyOtpRequest request) {
+        return ResponseEntity.ok(scheduleOtpService.verifyPartyOtp(supervisor, scheduleId, request));
     }
 }

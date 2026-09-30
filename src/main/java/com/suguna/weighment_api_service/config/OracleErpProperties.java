@@ -9,6 +9,8 @@ public class OracleErpProperties {
     private int defaultGeofenceRadiusMeters = 200;
     private int standardBirdsPerCage = 12;
     private long stableDurationMs = 2000L;
+    /** Limit list API to recent orders (0 = no date filter). */
+    private int scheduleListLookbackDays = 90;
 
     public String getApplicationCode() {
         return applicationCode;
@@ -40,5 +42,13 @@ public class OracleErpProperties {
 
     public void setStableDurationMs(long stableDurationMs) {
         this.stableDurationMs = stableDurationMs;
+    }
+
+    public int getScheduleListLookbackDays() {
+        return scheduleListLookbackDays;
+    }
+
+    public void setScheduleListLookbackDays(int scheduleListLookbackDays) {
+        this.scheduleListLookbackDays = scheduleListLookbackDays;
     }
 }
