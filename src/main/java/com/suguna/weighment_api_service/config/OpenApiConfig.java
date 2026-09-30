@@ -24,11 +24,11 @@ public class OpenApiConfig {
                         .addSecuritySchemes(
                                 BEARER_SCHEME,
                                 new SecurityScheme()
-                                        .name(BEARER_SCHEME)
                                         .type(SecurityScheme.Type.HTTP)
                                         .scheme("bearer")
                                         .bearerFormat("JWT")
-                                        .description("Device login access token")))
+                                        .description(
+                                                "Paste accessToken from POST /auth/device-login (Authorization: Bearer <token>)")))
                 .addSecurityItem(new SecurityRequirement().addList(BEARER_SCHEME));
     }
 }

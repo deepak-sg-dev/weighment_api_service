@@ -58,18 +58,23 @@ public class JwtService {
                     .getPayload();
             SupervisorProfile supervisor = SupervisorProfile.builder()
                     .id(claims.getSubject())
-                    .code(claims.get(CLAIM_SUPERVISOR_CODE, String.class))
-                    .name(claims.get(CLAIM_SUPERVISOR_NAME, String.class))
-                    .mobile(claims.get(CLAIM_SUPERVISOR_MOBILE, String.class))
-                    .branchId(claims.get(CLAIM_BRANCH_ID, String.class))
-                    .branchName(claims.get(CLAIM_BRANCH_NAME, String.class))
+                    .code(claimAsString(claims, CLAIM_SUPERVISOR_CODE))
+                    .name(claimAsString(claims, CLAIM_SUPERVISOR_NAME))
+                    .mobile(claimAsString(claims, CLAIM_SUPERVISOR_MOBILE))
+                    .branchId(claimAsString(claims, CLAIM_BRANCH_ID))
+                    .branchName(claimAsString(claims, CLAIM_BRANCH_NAME))
                     .active(true)
                     .build();
-            String deviceId = claims.get(CLAIM_DEVICE_ID, String.class);
+            String deviceId = claimAsString(claims, CLAIM_DEVICE_ID);
             return Optional.of(new AuthenticatedSupervisor(deviceId, supervisor));
         } catch (RuntimeException ex) {
             return Optional.empty();
         }
+    }
+
+    private static String claimAsString(Claims claims, String name) {
+        Object value = claims.get(name);
+        return value == null ? null : String.valueOf(value);
     }
 
     private static SecretKey resolveKey(String secret) {

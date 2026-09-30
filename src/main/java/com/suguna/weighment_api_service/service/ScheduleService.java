@@ -43,7 +43,7 @@ public class ScheduleService {
         }
 
         List<LiftingSchedule> schedules = scheduleRepository.findBySupervisorIdAndStatusIn(
-                supervisor.getSupervisor().getId(), statuses);
+                supervisor.getSupervisor().getCode(), statuses);
 
         return ScheduleListResponse.builder()
                 .success(true)
@@ -66,17 +66,13 @@ public class ScheduleService {
         validateDevice(supervisor, request.getDeviceId());
         LiftingSchedule schedule = loadSchedule(supervisor, scheduleId);
         ensureNotClosed(schedule);
-
-        schedule.setDownloaded(true);
-        if (schedule.getStatus() == ScheduleStatus.ASSIGNED) {
-            schedule.setStatus(ScheduleStatus.DOWNLOADED);
-        }
-        scheduleRepository.save(schedule);
+        scheduleRepository.markDownloaded(supervisor.getSupervisor().getCode(), scheduleId, request);
+        LiftingSchedule updated = loadSchedule(supervisor, scheduleId);
 
         return ScheduleActionResponse.builder()
                 .success(true)
                 .scheduleId(scheduleId)
-                .status(schedule.getStatus().name())
+                .status(updated.getStatus().name())
                 .message("Schedule marked as downloaded")
                 .build();
     }
@@ -93,21 +89,26 @@ public class ScheduleService {
             throw new ConflictException(ErrorCode.SCHEDULE_CLOSED, "Schedule is already completed");
         }
 
-        schedule.setStatus(ScheduleStatus.IN_PROGRESS);
-        scheduleRepository.save(schedule);
+        scheduleRepository.start(supervisor.getSupervisor().getCode(), scheduleId, request);
+        LiftingSchedule updated = loadSchedule(supervisor, scheduleId);
 
         return ScheduleActionResponse.builder()
                 .success(true)
                 .scheduleId(scheduleId)
-                .status(schedule.getStatus().name())
+                .status(updated.getStatus().name())
                 .message("Schedule started")
                 .build();
     }
 
     private LiftingSchedule loadSchedule(AuthenticatedSupervisor supervisor, String scheduleId) {
         return scheduleRepository
-                .findByScheduleIdAndSupervisorId(scheduleId, supervisor.getSupervisor().getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule", scheduleId));
+                .findByScheduleIdAndSupervisorId(scheduleId, supervisor.getSupervisor().getCode())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Schedule not found with id: "
+                                + scheduleId
+                                + " for supervisor "
+                                + supervisor.getSupervisor().getCode()
+                                + ". Use GET /weighment/schedules after device login, or log in as the supervisor assigned to this indent (ERP mobileuserempid)."));
     }
 
     private void validateDevice(AuthenticatedSupervisor supervisor, String deviceId) {
