@@ -38,12 +38,15 @@ public class TransactionSqlClient {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public TransactionSqlClient(JdbcTemplate jdbcTemplate) {
+    public TransactionSqlClient(
+            JdbcTemplate jdbcTemplate) {
+
         this.jdbcTemplate = jdbcTemplate;
     }
 
     public TransactionAcknowledgementResponse
-    getAcknowledgement(String transactionId) {
+    getAcknowledgement(
+            String transactionId) {
 
         return jdbcTemplate.queryForObject(
                 ACKNOWLEDGEMENT_SQL,
@@ -79,7 +82,8 @@ public class TransactionSqlClient {
 
         jdbcTemplate.update(
                 CORRECTION_SQL,
-                request.getCorrections().getRemarks(),
+                request.getCorrections()
+                        .getRemarks(),
                 transactionId
         );
     }

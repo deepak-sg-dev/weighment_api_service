@@ -1,6 +1,7 @@
 package com.suguna.weighment_api_service.service;
 
 import com.suguna.weighment_api_service.dto.transaction.TransactionAcknowledgementResponse;
+import com.suguna.weighment_api_service.dto.transaction.TransactionActionResponse;
 import com.suguna.weighment_api_service.dto.transaction.TransactionCorrectionRequest;
 import com.suguna.weighment_api_service.dto.transaction.TransactionRetryRequest;
 import com.suguna.weighment_api_service.repository.TransactionRepository;
@@ -17,28 +18,39 @@ public class TransactionService {
         this.transactionRepository = transactionRepository;
     }
 
-    public TransactionAcknowledgementResponse getAcknowledgement(
+    public TransactionAcknowledgementResponse
+    getAcknowledgement(
             String transactionId) {
 
-        return transactionRepository.getAcknowledgement(
-                transactionId);
+        return transactionRepository
+                .getAcknowledgement(transactionId);
     }
 
-    public void retryTransaction(
+    public TransactionActionResponse retryTransaction(
             String transactionId,
             TransactionRetryRequest request) {
 
         transactionRepository.retryTransaction(
                 transactionId,
                 request);
+
+        return TransactionActionResponse.builder()
+                .success(true)
+                .message("Retry submitted")
+                .build();
     }
 
-    public void submitCorrection(
+    public TransactionActionResponse submitCorrection(
             String transactionId,
             TransactionCorrectionRequest request) {
 
         transactionRepository.submitCorrection(
                 transactionId,
                 request);
+
+        return TransactionActionResponse.builder()
+                .success(true)
+                .message("Correction submitted")
+                .build();
     }
 }

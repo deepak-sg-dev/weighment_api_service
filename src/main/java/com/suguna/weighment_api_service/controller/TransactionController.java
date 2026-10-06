@@ -36,16 +36,10 @@ public class TransactionController {
             @PathVariable String transactionId,
             @RequestBody TransactionRetryRequest request) {
 
-        transactionService.retryTransaction(
-                transactionId,
-                request);
-
         return ResponseEntity.ok(
-                TransactionActionResponse.builder()
-                        .success(true)
-                        .message("Transaction queued for retry")
-                        .build()
-        );
+                transactionService.retryTransaction(
+                        transactionId,
+                        request));
     }
 
     @PostMapping("/{transactionId}/correction")
@@ -54,15 +48,9 @@ public class TransactionController {
             @PathVariable String transactionId,
             @RequestBody TransactionCorrectionRequest request) {
 
-        transactionService.submitCorrection(
-                transactionId,
-                request);
-
         return ResponseEntity.ok(
-                TransactionActionResponse.builder()
-                        .success(true)
-                        .message("Correction submitted successfully")
-                        .build()
-        );
+                transactionService.submitCorrection(
+                        transactionId,
+                        request));
     }
 }
