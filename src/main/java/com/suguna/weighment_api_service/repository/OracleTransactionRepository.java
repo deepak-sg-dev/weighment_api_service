@@ -1,13 +1,15 @@
 package com.suguna.weighment_api_service.repository;
 
 import com.suguna.weighment_api_service.dto.transaction.TransactionAcknowledgementResponse;
+import com.suguna.weighment_api_service.dto.transaction.TransactionActionResponse;
 import com.suguna.weighment_api_service.dto.transaction.TransactionCorrectionRequest;
 import com.suguna.weighment_api_service.dto.transaction.TransactionRetryRequest;
 import com.suguna.weighment_api_service.integration.oracle.TransactionSqlClient;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public class OracleTransactionRepository implements TransactionRepository {
+public class OracleTransactionRepository
+        implements TransactionRepository {
 
     private final TransactionSqlClient transactionSqlClient;
 
@@ -18,30 +20,41 @@ public class OracleTransactionRepository implements TransactionRepository {
     }
 
     @Override
-    public TransactionAcknowledgementResponse getAcknowledgement(
+    public TransactionAcknowledgementResponse
+    getAcknowledgement(
             String transactionId) {
 
-        return transactionSqlClient.getAcknowledgement(transactionId);
+        return transactionSqlClient
+                .getAcknowledgement(transactionId);
     }
 
     @Override
-    public void retryTransaction(
+    public TransactionActionResponse retryTransaction(
             String transactionId,
             TransactionRetryRequest request) {
 
         transactionSqlClient.retryTransaction(
                 transactionId,
                 request);
+
+        return TransactionActionResponse.builder()
+                .success(true)
+                .message("Retry submitted")
+                .build();
     }
 
     @Override
-    public void submitCorrection(
+    public TransactionActionResponse submitCorrection(
             String transactionId,
             TransactionCorrectionRequest request) {
 
         transactionSqlClient.submitCorrection(
                 transactionId,
-                request
-        );
+                request);
+
+        return TransactionActionResponse.builder()
+                .success(true)
+                .message("Correction submitted")
+                .build();
     }
 }
