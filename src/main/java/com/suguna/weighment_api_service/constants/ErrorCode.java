@@ -42,6 +42,11 @@ public enum ErrorCode {
             "Duplicate idempotency key",
             HttpStatus.CONFLICT,
             false),
+    DUPLICATE_TRANSACTION(
+            ErrorCodes.DUPLICATE_TRANSACTION,
+            "Duplicate transaction",
+            HttpStatus.CONFLICT,
+            false),
     SCHEDULE_CLOSED(ErrorCodes.SCHEDULE_CLOSED, "Schedule is already closed", HttpStatus.CONFLICT, false),
 
     BUSINESS_VALIDATION_FAILED(

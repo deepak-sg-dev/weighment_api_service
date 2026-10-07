@@ -12,6 +12,15 @@ public class OracleErpProperties {
     /** Limit list API to recent orders (0 = no date filter). */
     private int scheduleListLookbackDays = 90;
 
+    /** {@code sug_mai_birds_lifting_order.source} value for retail lifting schedules. */
+    private String retailLiftingSource = "RETAIL";
+
+    /**
+     * When true, {@code complete} compares {@code retailerOtp} to {@code RETAIL_OTP:nnnn} in
+     * {@code sug_mai_ntail_order.message} when present.
+     */
+    private boolean retailOtpValidationEnabled = true;
+
     public String getApplicationCode() {
         return applicationCode;
     }
@@ -50,5 +59,21 @@ public class OracleErpProperties {
 
     public void setScheduleListLookbackDays(int scheduleListLookbackDays) {
         this.scheduleListLookbackDays = scheduleListLookbackDays;
+    }
+
+    public String getRetailLiftingSource() {
+        return retailLiftingSource;
+    }
+
+    public void setRetailLiftingSource(String retailLiftingSource) {
+        this.retailLiftingSource = retailLiftingSource;
+    }
+
+    public boolean isRetailOtpValidationEnabled() {
+        return retailOtpValidationEnabled;
+    }
+
+    public void setRetailOtpValidationEnabled(boolean retailOtpValidationEnabled) {
+        this.retailOtpValidationEnabled = retailOtpValidationEnabled;
     }
 }

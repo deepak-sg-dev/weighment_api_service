@@ -28,9 +28,15 @@ public final class ErrorCodes {
     public static final String CONFLICT = "CONFLICT";
     public static final String DUPLICATE_IDEMPOTENCY_KEY = "DUPLICATE_IDEMPOTENCY_KEY";
     public static final String SCHEDULE_CLOSED = "SCHEDULE_CLOSED";
+    public static final String DUPLICATE_TRANSACTION = "DUPLICATE_TRANSACTION";
 
     // --- Business validation (HTTP 422) ---
+    public static final String VALIDATION_PENDING = "VALIDATION_PENDING";
+    public static final String ERP_REJECTED = "ERP_REJECTED";
     public static final String INVALID_RETAILER_OTP = "INVALID_RETAILER_OTP";
+    public static final String OTP_EXPIRED = "OTP_EXPIRED";
+    public static final String SHOP_IMAGE_REQUIRED = "SHOP_IMAGE_REQUIRED";
+    public static final String DELIVERY_LOCATION_REQUIRED = "DELIVERY_LOCATION_REQUIRED";
     public static final String INVALID_FARMER_OTP = "INVALID_FARMER_OTP";
     public static final String INVALID_TRADER_OTP = "INVALID_TRADER_OTP";
     public static final String BUSINESS_VALIDATION_FAILED = "BUSINESS_VALIDATION_FAILED";

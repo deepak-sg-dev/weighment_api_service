@@ -1,4 +1,4 @@
-package com.suguna.weighment_api_service.dto.transaction;
+package com.suguna.weighment_api_service.dto.retail;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,17 +9,10 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class TransactionAcknowledgementResponse {
+public class RetailDeliveryActionResponse {
 
     private boolean success;
-
-    private String transactionId;
-
+    private String retailOrderId;
     private String status;
-
-    private String erpTransactionReference;
-
     private String message;
-
-    private String acknowledgedAt;
 }

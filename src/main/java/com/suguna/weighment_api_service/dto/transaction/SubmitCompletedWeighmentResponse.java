@@ -9,17 +9,16 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class TransactionAcknowledgementResponse {
+public class SubmitCompletedWeighmentResponse {
 
     private boolean success;
 
-    private String transactionId;
-
+    /** ACCEPTED, PENDING, REJECTED — ERP processing state. */
     private String status;
 
-    private String erpTransactionReference;
+    private String localTransactionId;
 
-    private String message;
+    private String erpTransactionReference;
 
     private String acknowledgedAt;
 }
