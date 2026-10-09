@@ -33,8 +33,8 @@ public class LiftingScheduleSqlClient {
             """
             SELECT o.erpindentid AS schedule_id,
                    o.mobileuserempid AS supervisor_code,
-                   o.farmercode AS farm_id,
-                   o.farmername AS farm_name,
+                   f.farm_code AS farm_id,
+                   f.farm_name_village AS farm_name,
                    NVL(o.breed, NVL(o.ordertype, 'BROILER')) AS operation_type,
                    NVL(o.weighment_type, 'HANGING') AS scale_type,
                    NVL(o.no_of_birds, 0) AS planned_quantity,
@@ -45,6 +45,8 @@ public class LiftingScheduleSqlClient {
               LEFT JOIN sug_mai_birds_weighment w
                 ON TO_CHAR(w.schedule_no) = TO_CHAR(o.erpindentid)
                AND w.wm_supervisor_code = o.mobileuserempid
+              LEFT JOIN sug_farm_mst_header f
+                ON TRIM(f.farm_code) = TRIM(o.farmercode)
             """;
 
     /** Detail: includes GPS coordinates and full party/product fields. */
@@ -52,8 +54,8 @@ public class LiftingScheduleSqlClient {
             """
             SELECT o.erpindentid AS schedule_id,
                    o.mobileuserempid AS supervisor_code,
-                   o.farmercode AS farm_id,
-                   o.farmername AS farm_name,
+                   f.farm_code AS farm_id,
+                   f.farm_name_village AS farm_name,
                    NVL(o.breed, NVL(o.ordertype, 'BROILER')) AS operation_type,
                    NVL(o.weighment_type, 'HANGING') AS scale_type,
                    NVL(o.no_of_birds, 0) AS planned_quantity,
@@ -67,7 +69,7 @@ public class LiftingScheduleSqlClient {
                    NVL(o.avg_wt_high, 0) AS tolerance_max,
                    NVL(o.body_wt, 0) AS body_wt,
                    o.farmercode AS farmer_id,
-                   o.farmername AS farmer_name,
+                   f.farmer_name AS farmer_name,
                    o.farmer_mobile_no AS farmer_mobile,
                    o.customercode AS trader_id,
                    o.cus_name AS trader_name,
@@ -77,6 +79,8 @@ public class LiftingScheduleSqlClient {
               LEFT JOIN sug_mai_birds_weighment w
                 ON TO_CHAR(w.schedule_no) = TO_CHAR(o.erpindentid)
                AND w.wm_supervisor_code = o.mobileuserempid
+              LEFT JOIN sug_farm_mst_header f
+                ON TRIM(f.farm_code) = TRIM(o.farmercode)
               LEFT JOIN sug_farm_lifting_gps_v v
                 ON v.farm_code = o.farmercode
                AND v.branch_code = o.branchcode
@@ -89,9 +93,10 @@ public class LiftingScheduleSqlClient {
             """;
 
     private static final String MARK_DOWNLOADED_SQL =
+            // ERP stores downloaded status as 'Y' in NPICK_STATUS. DOWNLOADED changed to Y
             """
             UPDATE sug_mai_birds_weighment w
-               SET w.npick_status = 'DOWNLOADED',
+               SET w.npick_status = 'DOWNLOADED',  
                    w.updated_date = SYSDATE
              WHERE TO_CHAR(w.schedule_no) = TRIM(?)
                AND """
@@ -300,7 +305,7 @@ public class LiftingScheduleSqlClient {
         String npickStatus = rs.getString("npick_status");
         String orderSource = rs.getString("order_source");
         ScheduleStatus status = mapStatus(postedFlag, npickStatus, orderSource);
-        boolean downloaded = "DOWNLOADED".equalsIgnoreCase(npickStatus)
+        boolean downloaded = "Y".equalsIgnoreCase(npickStatus)
                 || "MOBILE_DOWNLOADED".equalsIgnoreCase(orderSource);
 
         LiftingSchedule.LiftingScheduleBuilder builder = LiftingSchedule.builder()
@@ -345,8 +350,8 @@ public class LiftingScheduleSqlClient {
         if ("Y".equalsIgnoreCase(postedFlag)) {
             return ScheduleStatus.COMPLETED;
         }
-        if ("DOWNLOADED".equalsIgnoreCase(npickStatus) || "MOBILE_DOWNLOADED".equalsIgnoreCase(orderSource)) {
-            return ScheduleStatus.DOWNLOADED;
+        if ("DOWNLOAD".equalsIgnoreCase(npickStatus) || "MOBILE_DOWNLOADED".equalsIgnoreCase(orderSource)) {
+            return ScheduleStatus.DOWNLOADED; // ERP stores downloaded status as 'Y' in NPICK_STATUS. DOWNLOADED changed to Y
         }
         if (npickStatus != null && npickStatus.toUpperCase(Locale.ROOT).contains("PROGRESS")) {
             return ScheduleStatus.IN_PROGRESS;
