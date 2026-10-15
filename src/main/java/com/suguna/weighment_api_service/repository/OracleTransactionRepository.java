@@ -21,7 +21,7 @@ public class OracleTransactionRepository implements TransactionRepository {
     @Override
     public SubmitCompletedWeighmentResponse submitCompleted(
             String supervisorCode, SubmitCompletedWeighmentRequest request) {
-        return transactionSqlClient.submitCompleted(supervisorCode, request, "ACCEPTED");
+        return transactionSqlClient.submitCompleted(supervisorCode, request, "RECEIVED");
     }
 
     @Override

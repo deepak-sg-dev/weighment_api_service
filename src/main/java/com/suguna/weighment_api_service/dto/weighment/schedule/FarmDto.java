@@ -9,6 +9,7 @@ public class FarmDto {
 
     private String id;
     private String name;
+    private String location;
     private double latitude;
     private double longitude;
     private int geofenceRadiusMeters;

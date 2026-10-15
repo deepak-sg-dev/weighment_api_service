@@ -16,6 +16,7 @@ import com.suguna.weighment_api_service.exception.BadRequestException;
 import com.suguna.weighment_api_service.exception.BusinessValidationException;
 import com.suguna.weighment_api_service.repository.RetailDeliveryRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
+import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -90,7 +91,8 @@ public class RetailDeliveryService {
         if (scheduleId == null || scheduleId.isBlank()) {
             throw new BadRequestException("scheduleId is required");
         }
-        return retailDeliveryRepository.loadRetailSchedule(supervisor.getSupervisor().getCode(), scheduleId);
+        return retailDeliveryRepository.loadRetailSchedule(
+                supervisor.getSupervisor().getCode(), ScheduleIdSupport.normalize(scheduleId));
     }
 
     private void validateCompletionRequest(CompleteRetailDeliveryRequest request) {

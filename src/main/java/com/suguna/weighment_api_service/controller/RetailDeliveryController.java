@@ -9,10 +9,16 @@ import com.suguna.weighment_api_service.dto.retail.RetailDeliveryOrderListRespon
 import com.suguna.weighment_api_service.dto.retail.RetailInvoiceStatusResponse;
 import com.suguna.weighment_api_service.dto.retail.RetailLocationsResponse;
 import com.suguna.weighment_api_service.dto.retail.TriggerRetailInvoiceRequest;
+import com.suguna.weighment_api_service.dto.weighment.schedule.VehiclePhotoUploadResponse;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.service.RetailDeliveryService;
+import com.suguna.weighment_api_service.service.WeighmentDeliveryPhotoService;
+import com.suguna.weighment_api_service.util.MultipartPhotos;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.time.Instant;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/retail")
@@ -29,9 +36,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class RetailDeliveryController {
 
     private final RetailDeliveryService retailDeliveryService;
+    private final WeighmentDeliveryPhotoService deliveryPhotoService;
 
-    public RetailDeliveryController(RetailDeliveryService retailDeliveryService) {
+    public RetailDeliveryController(
+            RetailDeliveryService retailDeliveryService, WeighmentDeliveryPhotoService deliveryPhotoService) {
         this.retailDeliveryService = retailDeliveryService;
+        this.deliveryPhotoService = deliveryPhotoService;
     }
 
     @GetMapping("/delivery-orders")
@@ -63,6 +73,20 @@ public class RetailDeliveryController {
             @RequestParam String scheduleId,
             @Valid @RequestBody MarkRetailerArrivedRequest request) {
         return ResponseEntity.ok(retailDeliveryService.markArrived(supervisor, retailOrderId, scheduleId, request));
+    }
+
+    @PostMapping(
+            value = "/delivery-orders/{retailOrderId}/shop-photo",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<VehiclePhotoUploadResponse> uploadShopPhoto(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @PathVariable String retailOrderId,
+            @RequestParam String scheduleId,
+            @RequestParam(value = "photo", required = false) MultipartFile photo,
+            @RequestParam(value = "photos", required = false) MultipartFile[] photos,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant capturedAt) {
+        return ResponseEntity.ok(deliveryPhotoService.uploadShopPhotos(
+                supervisor, scheduleId, retailOrderId, MultipartPhotos.resolve(photo, photos), capturedAt));
     }
 
     @PostMapping("/delivery-orders/{retailOrderId}/complete")

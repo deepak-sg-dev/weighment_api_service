@@ -1,28 +1,23 @@
 package com.suguna.weighment_api_service.dto.transaction;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import java.time.Instant;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.time.Instant;
-import java.util.List;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class SubmitCompletedWeighmentRequest {
-
-    @NotBlank
-    private String idempotencyKey;
-
-    @NotBlank
-    private String localTransactionId;
 
     @NotBlank
     private String scheduleId;
@@ -32,6 +27,13 @@ public class SubmitCompletedWeighmentRequest {
 
     private String supervisorId;
 
+    private String saleType;
+
+    private String birdType;
+
+    /** @deprecated Use {@link #birdType}; accepted for older clients. */
+    @Deprecated
+    @JsonAlias("operationType")
     private String operationType;
 
     @Valid
@@ -44,14 +46,13 @@ public class SubmitCompletedWeighmentRequest {
     @Valid
     private VehicleInfo vehicle;
 
-    private Integer plannedQuantity;
-
-    @Valid
-    private WeighmentSetup weighmentSetup;
+    private Double plannedQuantity;
 
     @Valid
     @NotEmpty
-    private List<WeighmentRow> rows;
+    @JsonProperty("weighmentEntries")
+    @JsonAlias("rows")
+    private List<WeighmentEntry> weighmentEntries;
 
     @Valid
     @NotNull
@@ -62,6 +63,20 @@ public class SubmitCompletedWeighmentRequest {
 
     @Valid
     private AuditInfo audit;
+
+    public String effectiveBirdType() {
+        if (birdType != null && !birdType.isBlank()) {
+            return birdType.trim();
+        }
+        if (operationType != null && !operationType.isBlank()) {
+            return operationType.trim();
+        }
+        return null;
+    }
+
+    public String effectiveSaleType() {
+        return saleType == null ? null : saleType.trim();
+    }
 
     @Data
     @Builder
@@ -85,12 +100,10 @@ public class SubmitCompletedWeighmentRequest {
         private Double capturedLatitude;
         private Double capturedLongitude;
         private Double accuracyMeters;
-        private Double distanceFromFarmMeters;
         private Boolean geofencePassed;
         private Boolean validatedLocally;
         private Instant validatedAt;
         private Boolean farmerOtpVerified;
-        private Boolean traderOtpVerified;
     }
 
     @Data
@@ -99,38 +112,23 @@ public class SubmitCompletedWeighmentRequest {
     @AllArgsConstructor
     public static class VehicleInfo {
         private String registrationNumber;
-        private List<String> evidenceReferences;
     }
 
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class WeighmentSetup {
-        private Double averageBirdWeight;
-        private Integer standardBirdsPerCage;
-        private Integer stableDurationMs;
-        private Double toleranceMin;
-        private Double toleranceMax;
-        private String captureMode;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class WeighmentRow {
+    public static class WeighmentEntry {
         private Integer sequence;
-        private String cageOrSetReference;
+        private String category;
         private Integer birdsApplied;
-        private Boolean birdsAdjusted;
-        private String adjustmentReason;
-        private Double tare;
         private Double gross;
         private Double net;
         private Double averageBirdWeight;
-        private String toleranceStatus;
-        private Instant capturedAt;
+        private Double weightDifference;
+        private String status;
+        private Instant startTime;
+        private Instant endTime;
     }
 
     @Data
@@ -154,9 +152,6 @@ public class SubmitCompletedWeighmentRequest {
         private Integer claimedBirds;
         private Integer replacementBirds;
         private Integer lameBirds;
-        private Integer deadBirds;
-        private Integer rejectedBirds;
-        private Integer returnedBirds;
         private Instant weighingStartTime;
         private Instant outTime;
         private String remarks;

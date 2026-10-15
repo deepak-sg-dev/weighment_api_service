@@ -17,7 +17,9 @@ import com.suguna.weighment_api_service.integration.oracle.TransactionSqlClient;
 import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.repository.TransactionRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
+import com.suguna.weighment_api_service.util.WeighmentSubmitKeys;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class TransactionService {
@@ -35,39 +37,36 @@ public class TransactionService {
         this.scheduleRepository = scheduleRepository;
     }
 
+    @Transactional
     public SubmitCompletedWeighmentResponse submitCompletedWeighment(
             AuthenticatedSupervisor supervisor, SubmitCompletedWeighmentRequest request) {
         validateDevice(supervisor, request.getDeviceId());
         validateSupervisor(supervisor, request.getSupervisorId());
-        validateOtpEvidence(request);
+        validateSubmissionEvidence(request);
+
+        String supervisorCode = supervisor.getSupervisor().getCode();
+        String scheduleId = WeighmentSubmitKeys.normalizeScheduleId(request.getScheduleId());
+        String transactionKey = WeighmentSubmitKeys.transactionKey(scheduleId);
 
         LiftingSchedule schedule = scheduleRepository
-                .findByScheduleIdAndSupervisorId(
-                        request.getScheduleId(), supervisor.getSupervisor().getCode())
+                .findByScheduleIdAndSupervisorId(scheduleId, supervisorCode)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.NOT_FOUND,
                         "Schedule not found with id: "
-                                + request.getScheduleId()
+                                + scheduleId
                                 + " for supervisor "
-                                + supervisor.getSupervisor().getCode()));
+                                + supervisorCode));
 
         if (schedule.getStatus() == ScheduleStatus.COMPLETED) {
             throw new ConflictException(ErrorCode.SCHEDULE_CLOSED, "Schedule is already completed");
         }
 
-        var existing = transactionSqlClient.findByIdempotencyKey(request.getIdempotencyKey());
-        if (existing.isPresent()) {
-            TransactionSqlClient.StoredTransaction prior = existing.get();
-            if (prior.scheduleNo() != null
-                    && !prior.scheduleNo().trim().equals(request.getScheduleId().trim())) {
-                throw new ConflictException(
-                        ErrorCode.DUPLICATE_TRANSACTION,
-                        "Idempotency key already used for a different schedule");
-            }
-            return prior.toResponse(request.getLocalTransactionId());
+        var existing = transactionSqlClient.findByScheduleId(scheduleId, supervisorCode);
+        if (existing.isPresent() && transactionSqlClient.hasWeighmentDetailLines(transactionKey)) {
+            return existing.get().toResponse(scheduleId);
         }
 
-        return transactionRepository.submitCompleted(supervisor.getSupervisor().getCode(), request);
+        return transactionRepository.submitCompleted(supervisorCode, request);
     }
 
     public TransactionAcknowledgementResponse getAcknowledgement(
@@ -106,17 +105,15 @@ public class TransactionService {
         }
     }
 
-    private void validateOtpEvidence(SubmitCompletedWeighmentRequest request) {
+    private void validateSubmissionEvidence(SubmitCompletedWeighmentRequest request) {
         SubmitCompletedWeighmentRequest.FarmValidation farm = request.getFarmValidation();
         if (farm == null) {
             throw new BusinessValidationException(
                     ErrorCodes.VALIDATION_PENDING, "Farm validation evidence is required");
         }
-        if (!Boolean.TRUE.equals(farm.getFarmerOtpVerified())
-                || !Boolean.TRUE.equals(farm.getTraderOtpVerified())) {
+        if (!Boolean.TRUE.equals(farm.getFarmerOtpVerified())) {
             throw new BusinessValidationException(
-                    ErrorCodes.VALIDATION_PENDING,
-                    "Farmer and trader OTP verification must be completed before submission");
+                    ErrorCodes.VALIDATION_PENDING, "Farmer OTP verification must be completed before submission");
         }
         if (!Boolean.TRUE.equals(farm.getGeofencePassed())) {
             throw new BusinessValidationException(

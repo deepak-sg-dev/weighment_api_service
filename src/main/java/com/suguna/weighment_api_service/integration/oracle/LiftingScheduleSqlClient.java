@@ -7,11 +7,13 @@ import com.suguna.weighment_api_service.domain.LiftingSchedule;
 import com.suguna.weighment_api_service.dto.weighment.schedule.MarkScheduleDownloadedRequest;
 import com.suguna.weighment_api_service.dto.weighment.schedule.StartScheduleRequest;
 import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
+import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.SimpleJdbcCall;
 import org.springframework.stereotype.Component;
 
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -28,22 +30,38 @@ public class LiftingScheduleSqlClient {
               OR LTRIM(TRIM(w.wm_supervisor_code), '0') = LTRIM(TRIM(?), '0'))
             """;
 
+    private static final String WEIGHMENT_JOIN_ON_SCHEDULE =
+            """
+             (TO_CHAR(w.schedule_no) = TO_CHAR(o.erpindentid)
+              OR TO_CHAR(w.schedule_no) = REGEXP_SUBSTR(TO_CHAR(o.erpindentid), '^[^/]+'))
+            """;
+
     /** List: no GPS view join; status and date filters applied in SQL. */
     private static final String LIST_SCHEDULES_SELECT =
             """
-            SELECT o.erpindentid AS schedule_id,
+            SELECT TO_CHAR(o.erpindentid) AS schedule_id,
                    o.mobileuserempid AS supervisor_code,
                    f.farm_code AS farm_id,
                    f.farm_name_village AS farm_name,
                    NVL(o.breed, NVL(o.ordertype, 'BROILER')) AS operation_type,
                    NVL(o.weighment_type, 'HANGING') AS scale_type,
                    NVL(o.no_of_birds, 0) AS planned_quantity,
+                   NVL(o.no_of_kgs, 0) AS planned_quantity_kg,
+                   o.order_request_date,
+                   o.branchcode AS branch_code,
+                   TO_CHAR(o.branchid) AS branch_id,
+                   o.ordernumber AS sales_order_no,
+                   NVL(o.body_wt, 0) AS body_wt,
+                   o.vehicleno AS vehicle_no,
+                   NVL(f.farm_name_village, o.farmername) AS farm_location,
                    NVL(o.posted_flag, 'N') AS posted_flag,
                    NVL(w.npick_status, 'OPEN') AS npick_status,
                    o.source AS order_source
               FROM sug_mai_birds_lifting_order o
               LEFT JOIN sug_mai_birds_weighment w
-                ON TO_CHAR(w.schedule_no) = TO_CHAR(o.erpindentid)
+                ON """
+            + WEIGHMENT_JOIN_ON_SCHEDULE
+            + """
                AND w.wm_supervisor_code = o.mobileuserempid
               LEFT JOIN sug_farm_mst_header f
                 ON TRIM(f.farm_code) = TRIM(o.farmercode)
@@ -52,13 +70,21 @@ public class LiftingScheduleSqlClient {
     /** Detail: includes GPS coordinates and full party/product fields. */
     private static final String DETAIL_SCHEDULES_SELECT =
             """
-            SELECT o.erpindentid AS schedule_id,
+            SELECT TO_CHAR(o.erpindentid) AS schedule_id,
                    o.mobileuserempid AS supervisor_code,
                    f.farm_code AS farm_id,
                    f.farm_name_village AS farm_name,
                    NVL(o.breed, NVL(o.ordertype, 'BROILER')) AS operation_type,
                    NVL(o.weighment_type, 'HANGING') AS scale_type,
                    NVL(o.no_of_birds, 0) AS planned_quantity,
+                   NVL(o.no_of_kgs, 0) AS planned_quantity_kg,
+                   o.order_request_date,
+                   o.branchcode AS branch_code,
+                   TO_CHAR(o.branchid) AS branch_id,
+                   o.ordernumber AS sales_order_no,
+                   NVL(o.body_wt, 0) AS body_wt,
+                   o.vehicleno AS vehicle_no,
+                   NVL(f.farm_name_village, o.farmername) AS farm_location,
                    NVL(o.posted_flag, 'N') AS posted_flag,
                    NVL(w.npick_status, 'OPEN') AS npick_status,
                    o.source AS order_source,
@@ -77,7 +103,9 @@ public class LiftingScheduleSqlClient {
                    NVL(o.breed, 'Broiler') AS product_name
               FROM sug_mai_birds_lifting_order o
               LEFT JOIN sug_mai_birds_weighment w
-                ON TO_CHAR(w.schedule_no) = TO_CHAR(o.erpindentid)
+                ON """
+            + WEIGHMENT_JOIN_ON_SCHEDULE
+            + """
                AND w.wm_supervisor_code = o.mobileuserempid
               LEFT JOIN sug_farm_mst_header f
                 ON TRIM(f.farm_code) = TRIM(o.farmercode)
@@ -98,7 +126,9 @@ public class LiftingScheduleSqlClient {
             UPDATE sug_mai_birds_weighment w
                SET w.npick_status = 'DOWNLOADED',  
                    w.updated_date = SYSDATE
-             WHERE TO_CHAR(w.schedule_no) = TRIM(?)
+             WHERE """
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + """
                AND """
             + WEIGHMENT_SUPERVISOR_MATCH;
 
@@ -108,7 +138,9 @@ public class LiftingScheduleSqlClient {
                SET o.vehicleno = NVL(?, o.vehicleno),
                    o.driver = ?,
                    o.order_request_date = ?
-             WHERE TO_CHAR(o.erpindentid) = TRIM(?)
+             WHERE """
+            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+            + """
                AND """
             + ORDER_SUPERVISOR_MATCH;
 
@@ -146,13 +178,14 @@ public class LiftingScheduleSqlClient {
     }
 
     public LiftingSchedule getScheduleDetails(String supervisorCode, String scheduleId) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         String sql = DETAIL_SCHEDULES_SELECT
                 + " WHERE "
                 + ORDER_SUPERVISOR_MATCH
                 + """
                  AND NVL(o.application, ?) = ?
-                 AND TO_CHAR(o.erpindentid) = TRIM(?)
-                """;
+                 AND """
+                + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH;
         List<LiftingSchedule> schedules = jdbcTemplate.query(
                 sql,
                 (rs, rowNum) -> mapDetailSchedule(rs),
@@ -160,7 +193,8 @@ public class LiftingScheduleSqlClient {
                 supervisorCode,
                 erpProperties.getApplicationCode(),
                 erpProperties.getApplicationCode(),
-                scheduleId);
+                normalizedScheduleId,
+                normalizedScheduleId);
         if (schedules.isEmpty()) {
             return null;
         }
@@ -168,20 +202,28 @@ public class LiftingScheduleSqlClient {
     }
 
     public void markScheduleDownloaded(String supervisorCode, String scheduleId, MarkScheduleDownloadedRequest request) {
-        int weighmentUpdated =
-                jdbcTemplate.update(MARK_DOWNLOADED_SQL, scheduleId, supervisorCode, supervisorCode);
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        int weighmentUpdated = jdbcTemplate.update(
+                MARK_DOWNLOADED_SQL,
+                normalizedScheduleId,
+                normalizedScheduleId,
+                supervisorCode,
+                supervisorCode);
         String orderSql =
                 """
                 UPDATE sug_mai_birds_lifting_order o
                    SET o.source = 'MOBILE_DOWNLOADED',
                        o.order_request_date = NVL(o.order_request_date, ?)
-                 WHERE TO_CHAR(o.erpindentid) = TRIM(?)
+                 WHERE """
+                + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+                + """
                    AND """
                 + ORDER_SUPERVISOR_MATCH;
         int orderUpdated = jdbcTemplate.update(
                 orderSql,
                 Timestamp.from(request.getDownloadedAt()),
-                scheduleId,
+                normalizedScheduleId,
+                normalizedScheduleId,
                 supervisorCode,
                 supervisorCode);
         if (weighmentUpdated == 0 && orderUpdated == 0) {
@@ -190,12 +232,14 @@ public class LiftingScheduleSqlClient {
     }
 
     public void startSchedule(String supervisorCode, String scheduleId, StartScheduleRequest request) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         int updated = jdbcTemplate.update(
                 START_SCHEDULE_SQL,
                 request.getVehicleRegistration(),
                 request.getLocalTransactionId(),
                 Timestamp.from(request.getStartedAt()),
-                scheduleId,
+                normalizedScheduleId,
+                normalizedScheduleId,
                 supervisorCode,
                 supervisorCode);
         if (updated == 0) {
@@ -212,7 +256,7 @@ public class LiftingScheduleSqlClient {
                     .withCatalogName(liftingProperties.getPackageName())
                     .withFunctionName("get_order_status");
             Map<String, Object> in = new HashMap<>();
-            in.put("p_line_id", parseNumericScheduleId(scheduleId));
+            in.put("p_line_id", ScheduleIdSupport.parseErpIndentAsLong(scheduleId));
             call.execute(in);
         } catch (RuntimeException ex) {
             // Non-blocking until ERP confirms line-id mapping.
@@ -311,6 +355,15 @@ public class LiftingScheduleSqlClient {
         LiftingSchedule.LiftingScheduleBuilder builder = LiftingSchedule.builder()
                 .scheduleId(rs.getString("schedule_id"))
                 .supervisorId(rs.getString("supervisor_code"))
+                .orderSource(rs.getString("order_source"))
+                .scheduledAt(readInstant(rs, "order_request_date"))
+                .plannedQuantityKg(rs.getDouble("planned_quantity_kg"))
+                .declaredBodyWeightKg(rs.getDouble("body_wt"))
+                .branchCode(rs.getString("branch_code"))
+                .branchId(rs.getString("branch_id"))
+                .salesOrderNo(readLongObject(rs, "sales_order_no"))
+                .vehicleNumber(rs.getString("vehicle_no"))
+                .farmLocation(rs.getString("farm_location"))
                 .farmId(rs.getString("farm_id"))
                 .farmName(rs.getString("farm_name"))
                 .plannedQuantity(rs.getInt("planned_quantity"))
@@ -346,6 +399,16 @@ public class LiftingScheduleSqlClient {
         return builder.build();
     }
 
+    private static Instant readInstant(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        Timestamp timestamp = rs.getTimestamp(column);
+        return timestamp == null ? null : timestamp.toInstant();
+    }
+
+    private static Long readLongObject(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
+    }
+
     private static ScheduleStatus mapStatus(String postedFlag, String npickStatus, String orderSource) {
         if ("Y".equalsIgnoreCase(postedFlag)) {
             return ScheduleStatus.COMPLETED;
@@ -359,11 +422,4 @@ public class LiftingScheduleSqlClient {
         return ScheduleStatus.ASSIGNED;
     }
 
-    private static long parseNumericScheduleId(String scheduleId) {
-        try {
-            return Long.parseLong(scheduleId.replaceAll("\\D", ""));
-        } catch (RuntimeException ex) {
-            return 0L;
-        }
-    }
 }

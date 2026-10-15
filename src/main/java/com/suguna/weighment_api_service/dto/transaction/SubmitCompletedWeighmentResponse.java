@@ -13,12 +13,12 @@ public class SubmitCompletedWeighmentResponse {
 
     private boolean success;
 
-    /** ACCEPTED, PENDING, REJECTED — ERP processing state. */
+    private String message;
+
+    private String scheduleId;
+
+    /** e.g. RECEIVED */
     private String status;
 
-    private String localTransactionId;
-
-    private String erpTransactionReference;
-
-    private String acknowledgedAt;
+    private String receivedAt;
 }

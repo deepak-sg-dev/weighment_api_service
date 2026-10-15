@@ -6,6 +6,8 @@ import com.suguna.weighment_api_service.dto.transaction.TransactionAcknowledgeme
 import com.suguna.weighment_api_service.dto.transaction.TransactionCorrectionRequest;
 import com.suguna.weighment_api_service.dto.transaction.TransactionRetryRequest;
 import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
+import com.suguna.weighment_api_service.util.ScheduleIdSupport;
+import com.suguna.weighment_api_service.util.WeighmentSubmitKeys;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -22,6 +24,7 @@ import java.util.Optional;
 public class TransactionSqlClient {
 
     private static final DateTimeFormatter ISO_INSTANT = DateTimeFormatter.ISO_INSTANT;
+    private static final String RECEIVED_STATUS = "RECEIVED";
 
     private static final String WEIGHMENT_SUPERVISOR_MATCH =
             """
@@ -35,23 +38,31 @@ public class TransactionSqlClient {
                    w.status,
                    w.remarks,
                    w.updated_date,
-                   w.order_number
+                   w.manual_dc_no
               FROM sug_mai_birds_weighment w
              WHERE TO_CHAR(w.trans_id) = TRIM(?)
-                OR TRIM(w.order_number) = TRIM(?)
+                OR TRIM(w.manual_dc_no) = TRIM(?)
             """;
 
-    private static final String FIND_BY_IDEMPOTENCY_SQL =
+    private static final String FIND_BY_SCHEDULE_SQL =
             """
             SELECT w.trans_id,
                    w.status,
                    w.remarks,
                    w.updated_date,
-                   w.order_number,
+                   w.manual_dc_no,
                    TO_CHAR(w.schedule_no) AS schedule_no
               FROM sug_mai_birds_weighment w
-             WHERE TRIM(w.order_number) = TRIM(?)
-                OR w.remarks LIKE 'IDEMPOTENCY:' || ? || '|%'
+             WHERE """
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + """
+               AND """
+            + WEIGHMENT_SUPERVISOR_MATCH
+            + """
+               AND (w.npick_status = 'COMPLETED'
+                    OR UPPER(NVL(w.status, 'X')) IN ('RECEIVED', 'ACCEPTED', 'PENDING'))
+             ORDER BY w.updated_date DESC NULLS LAST
+             FETCH FIRST 1 ROW ONLY
             """;
 
     private static final String SUBMIT_UPDATE_SQL =
@@ -72,12 +83,14 @@ public class TransactionSqlClient {
                    w.vehicle_outtime = NVL(?, w.vehicle_outtime),
                    w.status = ?,
                    w.npick_status = 'COMPLETED',
-                   w.order_number = ?,
+                   w.manual_dc_no = ?,
                    w.remarks = ?,
                    w.errorcount = 0,
                    w.abortcount = 0,
                    w.updated_date = SYSDATE
-             WHERE TO_CHAR(w.schedule_no) = TRIM(?)
+             WHERE """
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + """
                AND """
             + WEIGHMENT_SUPERVISOR_MATCH;
 
@@ -90,7 +103,7 @@ public class TransactionSqlClient {
                    w.remarks = NVL(w.remarks, '') || ' RETRY:' || ?,
                    w.updated_date = SYSDATE
              WHERE TO_CHAR(w.trans_id) = TRIM(?)
-                OR TRIM(w.order_number) = TRIM(?)
+                OR TRIM(w.manual_dc_no) = TRIM(?)
             """;
 
     private static final String CORRECTION_SQL =
@@ -99,29 +112,38 @@ public class TransactionSqlClient {
                SET w.remarks = ?,
                    w.updated_date = SYSDATE
              WHERE TO_CHAR(w.trans_id) = TRIM(?)
-                OR TRIM(w.order_number) = TRIM(?)
+                OR TRIM(w.manual_dc_no) = TRIM(?)
             """;
 
     private final JdbcTemplate jdbcTemplate;
+    private final WeighmentDetailSqlClient weighmentDetailSqlClient;
 
-    public TransactionSqlClient(JdbcTemplate jdbcTemplate) {
+    public TransactionSqlClient(JdbcTemplate jdbcTemplate, WeighmentDetailSqlClient weighmentDetailSqlClient) {
         this.jdbcTemplate = jdbcTemplate;
+        this.weighmentDetailSqlClient = weighmentDetailSqlClient;
     }
 
-    public Optional<StoredTransaction> findByIdempotencyKey(String idempotencyKey) {
+    public Optional<StoredTransaction> findByScheduleId(String scheduleId, String supervisorCode) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         List<StoredTransaction> rows = jdbcTemplate.query(
-                FIND_BY_IDEMPOTENCY_SQL,
+                FIND_BY_SCHEDULE_SQL,
                 (rs, rowNum) ->
                         new StoredTransaction(
                                 rs.getLong("trans_id"),
                                 rs.getString("status"),
                                 rs.getString("remarks"),
                                 rs.getTimestamp("updated_date"),
-                                rs.getString("order_number"),
+                                rs.getString("manual_dc_no"),
                                 rs.getString("schedule_no")),
-                idempotencyKey,
-                idempotencyKey);
+                normalizedScheduleId,
+                normalizedScheduleId,
+                supervisorCode,
+                supervisorCode);
         return rows.stream().findFirst();
+    }
+
+    public boolean hasWeighmentDetailLines(String scheduleTransactionKey) {
+        return weighmentDetailSqlClient.hasDetailLines(scheduleTransactionKey);
     }
 
     public SubmitCompletedWeighmentResponse submitCompleted(
@@ -133,7 +155,9 @@ public class TransactionSqlClient {
         SubmitCompletedWeighmentRequest.VehicleInfo vehicle = request.getVehicle();
         SubmitCompletedWeighmentRequest.ScaleInfo scale = request.getScale();
 
-        String remarks = formatRemarks(request.getIdempotencyKey(), completion);
+        String normalizedScheduleId = ScheduleIdSupport.normalize(request.getScheduleId());
+        String transactionKey = WeighmentSubmitKeys.transactionKey(normalizedScheduleId);
+        String remarks = formatRemarks(normalizedScheduleId, request, completion);
         Timestamp wmStart = toTimestamp(completion == null ? null : completion.getWeighingStartTime());
         Timestamp wmEnd = toTimestamp(completion == null ? null : completion.getOutTime());
         Timestamp vehicleOut = wmEnd;
@@ -154,9 +178,10 @@ public class TransactionSqlClient {
                 wmEnd,
                 vehicleOut,
                 erpStatus,
-                request.getLocalTransactionId(),
+                normalizedScheduleId,
                 remarks,
-                request.getScheduleId(),
+                normalizedScheduleId,
+                normalizedScheduleId,
                 supervisorCode,
                 supervisorCode);
 
@@ -167,8 +192,23 @@ public class TransactionSqlClient {
                             + ". Complete download/start flow before submitting.");
         }
 
-        StoredTransaction stored = findByIdempotencyKey(request.getIdempotencyKey()).orElseThrow();
-        return toSubmitResponse(stored, request.getLocalTransactionId());
+        long transId = weighmentDetailSqlClient
+                .resolveTransId(request.getScheduleId(), supervisorCode)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Weighment header trans_id not found for schedule " + request.getScheduleId()));
+
+        String businessModule = weighmentDetailSqlClient.resolveBusinessModule(
+                request.getScheduleId(), request.effectiveSaleType(), request.effectiveBirdType());
+        weighmentDetailSqlClient.insertWeighmentDetails(
+                supervisorCode,
+                request.getScheduleId(),
+                transId,
+                businessModule,
+                transactionKey,
+                request);
+
+        StoredTransaction stored = findByScheduleId(normalizedScheduleId, supervisorCode).orElseThrow();
+        return toSubmitResponse(stored, normalizedScheduleId);
     }
 
     public TransactionAcknowledgementResponse getAcknowledgement(String transactionId) {
@@ -198,19 +238,15 @@ public class TransactionSqlClient {
         }
     }
 
-    static String formatRemarks(String idempotencyKey, SubmitCompletedWeighmentRequest.CompletionInfo completion) {
+    static String formatRemarks(
+            String scheduleId, SubmitCompletedWeighmentRequest request, SubmitCompletedWeighmentRequest.CompletionInfo completion) {
         String userRemarks =
                 completion == null || completion.getRemarks() == null ? "" : completion.getRemarks().trim();
-        String prefix = "IDEMPOTENCY:" + idempotencyKey + "|";
+        String saleType = request.effectiveSaleType() == null ? "" : request.effectiveSaleType();
+        String birdType = request.effectiveBirdType() == null ? "" : request.effectiveBirdType();
+        String prefix = "SUBMIT:" + scheduleId + "|saleType=" + saleType + "|birdType=" + birdType + "|";
         String combined = prefix + userRemarks;
         return combined.length() <= 4000 ? combined : combined.substring(0, 4000);
-    }
-
-    static String erpReference(long transId, String orderNumber) {
-        if (orderNumber != null && !orderNumber.isBlank()) {
-            return orderNumber;
-        }
-        return "ERP-LIFT-" + transId;
     }
 
     static String formatInstant(Timestamp timestamp) {
@@ -220,27 +256,25 @@ public class TransactionSqlClient {
         return timestamp.toInstant().atOffset(ZoneOffset.UTC).format(ISO_INSTANT);
     }
 
-    private SubmitCompletedWeighmentResponse toSubmitResponse(
-            StoredTransaction stored, String localTransactionId) {
-        String status = normalizeStatus(stored.status());
+    private SubmitCompletedWeighmentResponse toSubmitResponse(StoredTransaction stored, String scheduleId) {
         return SubmitCompletedWeighmentResponse.builder()
                 .success(true)
-                .status(status)
-                .localTransactionId(localTransactionId)
-                .erpTransactionReference(erpReference(stored.transId(), stored.orderNumber()))
-                .acknowledgedAt(formatInstant(stored.updatedDate()))
+                .message("Weighment received")
+                .scheduleId(scheduleId)
+                .status(RECEIVED_STATUS)
+                .receivedAt(formatInstant(stored.updatedDate()))
                 .build();
     }
 
     private TransactionAcknowledgementResponse mapAcknowledgement(java.sql.ResultSet rs)
             throws java.sql.SQLException {
         long transId = rs.getLong("trans_id");
-        String orderNumber = rs.getString("order_number");
+        String manualDcNo = rs.getString("manual_dc_no");
         return TransactionAcknowledgementResponse.builder()
                 .success(true)
                 .transactionId(String.valueOf(transId))
                 .status(normalizeStatus(rs.getString("status")))
-                .erpTransactionReference(erpReference(transId, orderNumber))
+                .erpTransactionReference(manualDcNo != null ? manualDcNo : "ERP-LIFT-" + transId)
                 .message(rs.getString("remarks"))
                 .acknowledgedAt(formatInstant(rs.getTimestamp("updated_date")))
                 .build();
@@ -262,18 +296,16 @@ public class TransactionSqlClient {
             String status,
             String remarks,
             Timestamp updatedDate,
-            String orderNumber,
+            String manualDcNo,
             String scheduleNo) {
 
-        public SubmitCompletedWeighmentResponse toResponse(String localTransactionId) {
-            String normalized =
-                    status == null || status.isBlank() ? "PENDING" : status.trim().toUpperCase(Locale.ROOT);
+        public SubmitCompletedWeighmentResponse toResponse(String scheduleId) {
             return SubmitCompletedWeighmentResponse.builder()
                     .success(true)
-                    .status(normalized)
-                    .localTransactionId(localTransactionId)
-                    .erpTransactionReference(erpReference(transId, orderNumber))
-                    .acknowledgedAt(formatInstant(updatedDate))
+                    .message("Weighment received")
+                    .scheduleId(scheduleId)
+                    .status(RECEIVED_STATUS)
+                    .receivedAt(formatInstant(updatedDate))
                     .build();
         }
     }

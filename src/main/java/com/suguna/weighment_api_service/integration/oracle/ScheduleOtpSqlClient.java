@@ -1,6 +1,7 @@
 package com.suguna.weighment_api_service.integration.oracle;
 
 import com.suguna.weighment_api_service.config.OracleErpProperties;
+import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +21,7 @@ public class ScheduleOtpSqlClient {
     }
 
     public Optional<ScheduleOtpRow> findOtpContext(String supervisorCode, String scheduleId) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         List<String> supervisorKeys = LiftingScheduleSqlClient.supervisorBindKeys(supervisorCode);
         String sql =
                 """
@@ -32,13 +34,14 @@ public class ScheduleOtpSqlClient {
                         + supervisorEqualityPredicate(supervisorKeys)
                         + """
                            AND NVL(o.application, ?) = ?
-                           AND TO_CHAR(o.erpindentid) = TRIM(?)
-                        """;
+                           AND """
+                        + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH;
 
         List<Object> args = new ArrayList<>(supervisorKeys);
         args.add(erpProperties.getApplicationCode());
         args.add(erpProperties.getApplicationCode());
-        args.add(scheduleId);
+        args.add(normalizedScheduleId);
+        args.add(normalizedScheduleId);
 
         List<ScheduleOtpRow> rows = jdbcTemplate.query(
                 sql,

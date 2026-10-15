@@ -11,6 +11,7 @@ import com.suguna.weighment_api_service.dto.retail.RetailDeliveryOrderSummaryDto
 import com.suguna.weighment_api_service.dto.retail.RetailInvoiceStatusResponse;
 import com.suguna.weighment_api_service.dto.retail.RetailLocationDto;
 import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
+import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -41,7 +42,9 @@ public class RetailDeliverySqlClient {
                    o.order_request_date,
                    o.ordernumber AS internal_po_number
               FROM sug_mai_birds_lifting_order o
-             WHERE TO_CHAR(o.erpindentid) = TRIM(?)
+             WHERE """
+            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+            + """
                AND NVL(o.source, 'X') = ?
                AND NVL(o.application, ?) = ?
                AND """
@@ -143,11 +146,13 @@ public class RetailDeliverySqlClient {
     }
 
     public RetailScheduleContext loadRetailSchedule(String supervisorCode, String scheduleId) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         try {
             return jdbcTemplate.queryForObject(
                     LOAD_RETAIL_SCHEDULE_SQL,
                     (rs, rowNum) -> mapScheduleContext(rs),
-                    scheduleId,
+                    normalizedScheduleId,
+                    normalizedScheduleId,
                     erpProperties.getRetailLiftingSource(),
                     erpProperties.getApplicationCode(),
                     erpProperties.getApplicationCode(),

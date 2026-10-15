@@ -15,6 +15,7 @@ import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.mapper.ScheduleMapper;
 import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
+import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import org.springframework.stereotype.Service;
 
 import java.util.EnumSet;
@@ -28,9 +29,12 @@ public class ScheduleService {
             EnumSet.of(ScheduleStatus.ASSIGNED, ScheduleStatus.IN_PROGRESS, ScheduleStatus.DOWNLOADED);
 
     private final ScheduleRepository scheduleRepository;
+    private final ScheduleRetailEnrichmentService retailEnrichmentService;
 
-    public ScheduleService(ScheduleRepository scheduleRepository) {
+    public ScheduleService(
+            ScheduleRepository scheduleRepository, ScheduleRetailEnrichmentService retailEnrichmentService) {
         this.scheduleRepository = scheduleRepository;
+        this.retailEnrichmentService = retailEnrichmentService;
     }
 
     public ScheduleListResponse getAssignedSchedules(AuthenticatedSupervisor supervisor, String statusCsv) {
@@ -42,20 +46,33 @@ public class ScheduleService {
             statuses = DEFAULT_LIST_STATUSES;
         }
 
-        List<LiftingSchedule> schedules = scheduleRepository.findBySupervisorIdAndStatusIn(
-                supervisor.getSupervisor().getCode(), statuses);
+        String supervisorCode = supervisor.getSupervisor().getCode();
+        List<LiftingSchedule> schedules = scheduleRepository.findBySupervisorIdAndStatusIn(supervisorCode, statuses);
 
         return ScheduleListResponse.builder()
                 .success(true)
-                .schedules(schedules.stream().map(ScheduleMapper::toSummary).toList())
+                .schedules(schedules.stream()
+                        .map(schedule -> {
+                            String saleType = retailEnrichmentService.resolveSaleType(schedule.getOrderSource());
+                            var orders = retailEnrichmentService.loadListOrders(supervisorCode, schedule);
+                            String deliveryStatus =
+                                    retailEnrichmentService.resolveDeliveryStatus(supervisorCode, schedule);
+                            return ScheduleMapper.toSummary(schedule, saleType, orders, deliveryStatus);
+                        })
+                        .toList())
                 .build();
     }
 
     public ScheduleDetailResponse getScheduleDetails(AuthenticatedSupervisor supervisor, String scheduleId) {
         LiftingSchedule schedule = loadSchedule(supervisor, scheduleId);
+        String supervisorCode = supervisor.getSupervisor().getCode();
+        String saleType = retailEnrichmentService.resolveSaleType(schedule.getOrderSource());
+        var deliveries = retailEnrichmentService.loadDetailDeliveries(supervisorCode, schedule);
+        String deliveryStatus = retailEnrichmentService.resolveDeliveryStatus(deliveries, saleType);
         return ScheduleDetailResponse.builder()
                 .success(true)
-                .schedule(ScheduleMapper.toDetail(schedule))
+                .schedule(ScheduleMapper.toDetail(
+                        schedule, saleType, deliveries, deliveryStatus, supervisor.getSupervisor()))
                 .build();
     }
 
@@ -71,7 +88,7 @@ public class ScheduleService {
 
         return ScheduleActionResponse.builder()
                 .success(true)
-                .scheduleId(scheduleId)
+                .scheduleId(updated.getScheduleId())
                 .status(updated.getStatus().name())
                 .message("Schedule marked as downloaded")
                 .build();
@@ -94,21 +111,23 @@ public class ScheduleService {
 
         return ScheduleActionResponse.builder()
                 .success(true)
-                .scheduleId(scheduleId)
+                .scheduleId(updated.getScheduleId())
                 .status(updated.getStatus().name())
                 .message("Schedule started")
                 .build();
     }
 
     private LiftingSchedule loadSchedule(AuthenticatedSupervisor supervisor, String scheduleId) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         return scheduleRepository
-                .findByScheduleIdAndSupervisorId(scheduleId, supervisor.getSupervisor().getCode())
+                .findByScheduleIdAndSupervisorId(normalizedScheduleId, supervisor.getSupervisor().getCode())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Schedule not found with id: "
-                                + scheduleId
+                                + normalizedScheduleId
                                 + " for supervisor "
                                 + supervisor.getSupervisor().getCode()
-                                + ". Use GET /weighment/schedules after device login, or log in as the supervisor assigned to this indent (ERP mobileuserempid)."));
+                                + ". For ids containing '/' (e.g. 211342644/1.1), call GET /weighment/schedules/detail?scheduleId=... "
+                                + "instead of a path segment, or URL-encode the slash as %2F."));
     }
 
     private void validateDevice(AuthenticatedSupervisor supervisor, String deviceId) {

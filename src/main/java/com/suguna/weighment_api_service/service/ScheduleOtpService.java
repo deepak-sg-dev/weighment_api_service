@@ -14,6 +14,7 @@ import com.suguna.weighment_api_service.integration.oracle.ScheduleOtpSqlClient;
 import com.suguna.weighment_api_service.integration.oracle.ScheduleOtpSqlClient.ScheduleOtpRow;
 import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
+import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import org.springframework.stereotype.Service;
 
 import java.util.Locale;
@@ -89,15 +90,17 @@ public class ScheduleOtpService {
     }
 
     private ScheduleOtpRow requireOtpRow(AuthenticatedSupervisor supervisor, String scheduleId) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         return scheduleOtpSqlClient
-                .findOtpContext(supervisor.getSupervisor().getCode(), scheduleId)
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule", scheduleId));
+                .findOtpContext(supervisor.getSupervisor().getCode(), normalizedScheduleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Schedule", normalizedScheduleId));
     }
 
     private void ensureScheduleAccessible(AuthenticatedSupervisor supervisor, String scheduleId) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         scheduleRepository
-                .findByScheduleIdAndSupervisorId(scheduleId, supervisor.getSupervisor().getCode())
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule", scheduleId));
+                .findByScheduleIdAndSupervisorId(normalizedScheduleId, supervisor.getSupervisor().getCode())
+                .orElseThrow(() -> new ResourceNotFoundException("Schedule", normalizedScheduleId));
     }
 
     private void validateDevice(AuthenticatedSupervisor supervisor, String deviceId) {

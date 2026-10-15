@@ -1,6 +1,7 @@
 package com.suguna.weighment_api_service.domain;
 
 import com.suguna.weighment_api_service.constants.ScheduleStatus;
+import java.time.Instant;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -12,6 +13,15 @@ public class LiftingSchedule {
 
     private String scheduleId;
     private String supervisorId;
+    private String orderSource;
+    private Instant scheduledAt;
+    private double plannedQuantityKg;
+    private double declaredBodyWeightKg;
+    private String branchCode;
+    private String branchId;
+    private Long salesOrderNo;
+    private String vehicleNumber;
+    private String farmLocation;
     private String farmId;
     private String farmName;
     private double farmLatitude;
