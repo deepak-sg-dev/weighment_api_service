@@ -42,7 +42,7 @@ public class AuthController {
     public ResponseEntity<?> logout(
             @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
             @Valid @RequestBody LogoutRequest request) {
-        authService.logout(supervisor, request.getDeviceId());
+        authService.logout(supervisor, request);
         return ApiResponses.okEmpty();
     }
 }

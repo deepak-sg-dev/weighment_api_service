@@ -18,6 +18,22 @@ import java.util.Optional;
 @Component
 public class DeviceLoginSqlClient {
 
+    private static final String LOGIN_METADATA_UPDATE_SQL =
+            """
+            UPDATE sug_mai_devicedata d
+               SET d.last_login_date = SYSDATE,
+                   d.os = CASE WHEN ? IS NOT NULL THEN ? ELSE d.os END,
+                   d.device_info = CASE WHEN ? IS NOT NULL THEN ? ELSE d.device_info END,
+                   d.login_source = 'BRO-WEIGHMENT',
+                   d.last_updated_date = SYSDATE
+             WHERE d.application = ?
+               AND (
+                    d.androidid = ?
+                 OR TO_CHAR(d.device_id) = ?
+                 OR TO_CHAR(d.device_id_2) = ?
+               )
+            """;
+
     private static final String DEVICE_LOOKUP_SQL =
             """
             SELECT d.androidid AS device_id,
@@ -92,5 +108,55 @@ public class DeviceLoginSqlClient {
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.DEVICE_NOT_CONFIGURED,
                         "Device is not mapped to a supervisor in ERP"));
+    }
+
+    /**
+     * Best-effort ERP touch on successful login (last login time, OS / device info when supplied).
+     * GPS is not stored on {@code sug_mai_devicedata}; callers should audit lat/long separately.
+     */
+    public void recordSuccessfulLogin(
+            String deviceId,
+            String osVersion,
+            String deviceInfoSummary) {
+        String os = blankToNull(osVersion);
+        String deviceInfo = blankToNull(deviceInfoSummary);
+        if (os == null && deviceInfo == null) {
+            jdbcTemplate.update(
+                    """
+                    UPDATE sug_mai_devicedata d
+                       SET d.last_login_date = SYSDATE,
+                           d.login_source = 'BRO-WEIGHMENT',
+                           d.last_updated_date = SYSDATE
+                     WHERE d.application = ?
+                       AND (
+                            d.androidid = ?
+                         OR TO_CHAR(d.device_id) = ?
+                         OR TO_CHAR(d.device_id_2) = ?
+                       )
+                    """,
+                    erpProperties.getApplicationCode(),
+                    deviceId,
+                    deviceId,
+                    deviceId);
+            return;
+        }
+        jdbcTemplate.update(
+                LOGIN_METADATA_UPDATE_SQL,
+                os,
+                os,
+                deviceInfo,
+                deviceInfo,
+                erpProperties.getApplicationCode(),
+                deviceId,
+                deviceId,
+                deviceId);
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }
