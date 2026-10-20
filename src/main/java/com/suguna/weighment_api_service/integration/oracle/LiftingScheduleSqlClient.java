@@ -24,16 +24,13 @@ import java.util.Set;
 @Component
 public class LiftingScheduleSqlClient {
 
-    private static final String WEIGHMENT_SUPERVISOR_MATCH =
+    private static final String MOBILE_STATUS_COLUMNS =
             """
-             (TRIM(w.wm_supervisor_code) = TRIM(?)
-              OR LTRIM(TRIM(w.wm_supervisor_code), '0') = LTRIM(TRIM(?), '0'))
-            """;
-
-    private static final String WEIGHMENT_JOIN_ON_SCHEDULE =
-            """
-             (TO_CHAR(w.schedule_no) = TO_CHAR(o.erpindentid)
-              OR TO_CHAR(w.schedule_no) = REGEXP_SUBSTR(TO_CHAR(o.erpindentid), '^[^/]+'))
+                   NVL(o.download_flag, 'N') AS download_flag,
+                   o.downloaded_date,
+                   o.started_date,
+                   o.lifting_status,
+                   o.delivery_status
             """;
 
     /** List: no GPS view join; status and date filters applied in SQL. */
@@ -54,15 +51,11 @@ public class LiftingScheduleSqlClient {
                    NVL(o.body_wt, 0) AS body_wt,
                    o.vehicleno AS vehicle_no,
                    NVL(f.farm_name_village, o.farmername) AS farm_location,
-                   NVL(o.posted_flag, 'N') AS posted_flag,
-                   NVL(w.npick_status, 'OPEN') AS npick_status,
-                   o.source AS order_source
-              FROM sug_mai_birds_lifting_order o
-              LEFT JOIN sug_mai_birds_weighment w
-                ON """
-            + WEIGHMENT_JOIN_ON_SCHEDULE
+                   o.source AS order_source,
+            """
+            + MOBILE_STATUS_COLUMNS
             + """
-               AND w.wm_supervisor_code = o.mobileuserempid
+              FROM sug_mai_birds_lifting_order o
               LEFT JOIN sug_farm_mst_header f
                 ON TRIM(f.farm_code) = TRIM(o.farmercode)
             """;
@@ -85,15 +78,16 @@ public class LiftingScheduleSqlClient {
                    NVL(o.body_wt, 0) AS body_wt,
                    o.vehicleno AS vehicle_no,
                    NVL(f.farm_name_village, o.farmername) AS farm_location,
-                   NVL(o.posted_flag, 'N') AS posted_flag,
-                   NVL(w.npick_status, 'OPEN') AS npick_status,
                    o.source AS order_source,
+            """
+            + MOBILE_STATUS_COLUMNS
+            + """
+                   ,
                    NVL(v.farm_mst_latitude, 0) AS farm_latitude,
                    NVL(v.farm_mst_longitude, 0) AS farm_longitude,
                    NVL(o.tolerancepercent, 0) AS tolerance_percent,
                    NVL(o.avg_wt_low, 0) AS tolerance_min,
                    NVL(o.avg_wt_high, 0) AS tolerance_max,
-                   NVL(o.body_wt, 0) AS body_wt,
                    o.farmercode AS farmer_id,
                    f.farmer_name AS farmer_name,
                    o.farmer_mobile_no AS farmer_mobile,
@@ -102,11 +96,6 @@ public class LiftingScheduleSqlClient {
                    NVL(o.breed, 'BROILER') AS product_id,
                    NVL(o.breed, 'Broiler') AS product_name
               FROM sug_mai_birds_lifting_order o
-              LEFT JOIN sug_mai_birds_weighment w
-                ON """
-            + WEIGHMENT_JOIN_ON_SCHEDULE
-            + """
-               AND w.wm_supervisor_code = o.mobileuserempid
               LEFT JOIN sug_farm_mst_header f
                 ON TRIM(f.farm_code) = TRIM(o.farmercode)
               LEFT JOIN sug_farm_lifting_gps_v v
@@ -120,24 +109,60 @@ public class LiftingScheduleSqlClient {
               OR LTRIM(TRIM(o.mobileuserempid), '0') = LTRIM(TRIM(?), '0'))
             """;
 
-    private static final String MARK_DOWNLOADED_SQL =
-            // ERP stores downloaded status as 'Y' in NPICK_STATUS. DOWNLOADED changed to Y
+    /**
+     * List API: only {@code sug_mai_birds_lifting_order} rows created for the mobile weighment app
+     * ({@code source} MOBILE / MOBILE_DOWNLOADED) plus configured retail source (e.g. RETAIL).
+     */
+    private static final String LIST_ORDER_SOURCE_PREDICATE =
             """
-            UPDATE sug_mai_birds_weighment w
-               SET w.npick_status = 'DOWNLOADED',  
-                   w.updated_date = SYSDATE
+             AND (UPPER(TRIM(NVL(o.source, 'X'))) LIKE 'MOBILE%'
+                  OR UPPER(TRIM(NVL(o.source, 'X'))) = UPPER(?))
+            """;
+
+    private static final String MARK_DOWNLOADED_SQL =
+            """
+            UPDATE sug_mai_birds_lifting_order o
+               SET o.download_flag = 'Y',
+                   o.downloaded_date = ?,
+                   o.lifting_status = 'DOWNLOADED',
+                   o.updated_at = SYSDATE,
+                   o.updated_by = ?
              WHERE """
-            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
             + """
                AND """
-            + WEIGHMENT_SUPERVISOR_MATCH;
+            + ORDER_SUPERVISOR_MATCH;
 
     private static final String START_SCHEDULE_SQL =
             """
             UPDATE sug_mai_birds_lifting_order o
                SET o.vehicleno = NVL(?, o.vehicleno),
-                   o.driver = ?,
-                   o.order_request_date = ?
+                   o.started_date = ?,
+                   o.lifting_status = 'IN_PROGRESS',
+                   o.updated_at = SYSDATE,
+                   o.updated_by = ?
+             WHERE """
+            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+            + """
+               AND """
+            + ORDER_SUPERVISOR_MATCH;
+
+    /**
+     * After weighment submit: close lifting. Retail schedules get {@code delivery_status = PENDING}
+     * when unset; wholesale leaves {@code delivery_status} unchanged.
+     */
+    private static final String COMPLETE_LIFTING_AFTER_WEIGHMENT_SQL =
+            """
+            UPDATE sug_mai_birds_lifting_order o
+               SET o.lifting_status = 'COMPLETED',
+                   o.delivery_status = CASE
+                       WHEN UPPER(TRIM(?)) = 'RETAIL'
+                            AND (o.delivery_status IS NULL OR TRIM(o.delivery_status) = '')
+                       THEN 'PENDING'
+                       ELSE o.delivery_status
+                   END,
+                   o.updated_at = SYSDATE,
+                   o.updated_by = ?
              WHERE """
             + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
             + """
@@ -163,6 +188,7 @@ public class LiftingScheduleSqlClient {
                 + " WHERE "
                 + supervisorEqualityPredicate(supervisorKeys)
                 + " AND NVL(o.application, ?) = ?"
+                + LIST_ORDER_SOURCE_PREDICATE
                 + lookbackPredicate()
                 + buildStatusWhereClause(statuses);
 
@@ -170,6 +196,7 @@ public class LiftingScheduleSqlClient {
         args.addAll(supervisorKeys);
         args.add(erpProperties.getApplicationCode());
         args.add(erpProperties.getApplicationCode());
+        args.add(erpProperties.getRetailLiftingSource());
         if (erpProperties.getScheduleListLookbackDays() > 0) {
             args.add(erpProperties.getScheduleListLookbackDays());
         }
@@ -203,30 +230,15 @@ public class LiftingScheduleSqlClient {
 
     public void markScheduleDownloaded(String supervisorCode, String scheduleId, MarkScheduleDownloadedRequest request) {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
-        int weighmentUpdated = jdbcTemplate.update(
+        int updated = jdbcTemplate.update(
                 MARK_DOWNLOADED_SQL,
-                normalizedScheduleId,
-                normalizedScheduleId,
-                supervisorCode,
-                supervisorCode);
-        String orderSql =
-                """
-                UPDATE sug_mai_birds_lifting_order o
-                   SET o.source = 'MOBILE_DOWNLOADED',
-                       o.order_request_date = NVL(o.order_request_date, ?)
-                 WHERE """
-                + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
-                + """
-                   AND """
-                + ORDER_SUPERVISOR_MATCH;
-        int orderUpdated = jdbcTemplate.update(
-                orderSql,
                 Timestamp.from(request.getDownloadedAt()),
+                trimUpdatedBy(supervisorCode),
                 normalizedScheduleId,
                 normalizedScheduleId,
                 supervisorCode,
                 supervisorCode);
-        if (weighmentUpdated == 0 && orderUpdated == 0) {
+        if (updated == 0) {
             throw new ResourceNotFoundException("Schedule", scheduleId);
         }
     }
@@ -236,8 +248,8 @@ public class LiftingScheduleSqlClient {
         int updated = jdbcTemplate.update(
                 START_SCHEDULE_SQL,
                 request.getVehicleRegistration(),
-                request.getLocalTransactionId(),
                 Timestamp.from(request.getStartedAt()),
+                trimUpdatedBy(supervisorCode),
                 normalizedScheduleId,
                 normalizedScheduleId,
                 supervisorCode,
@@ -246,6 +258,37 @@ public class LiftingScheduleSqlClient {
             throw new ResourceNotFoundException("Schedule", scheduleId);
         }
         invokeOrderStatusValidation(scheduleId);
+    }
+
+    /**
+     * @param saleTypeOrModule normalized sale type or business module (e.g. RETAIL, WHOLESALE)
+     */
+    public void markLiftingCompletedAfterWeighment(
+            String supervisorCode, String scheduleId, String saleTypeOrModule) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        String saleToken = normalizeSaleTypeForDelivery(saleTypeOrModule);
+        jdbcTemplate.update(
+                COMPLETE_LIFTING_AFTER_WEIGHMENT_SQL,
+                saleToken,
+                trimUpdatedBy(supervisorCode),
+                normalizedScheduleId,
+                normalizedScheduleId,
+                supervisorCode,
+                supervisorCode);
+    }
+
+    private String normalizeSaleTypeForDelivery(String saleTypeOrModule) {
+        if (saleTypeOrModule == null || saleTypeOrModule.isBlank()) {
+            return "WHOLESALE";
+        }
+        String normalized = saleTypeOrModule.trim().toUpperCase(Locale.ROOT);
+        if ("RETAIL".equals(normalized)) {
+            return "RETAIL";
+        }
+        if (erpProperties.getRetailLiftingSource().equalsIgnoreCase(normalized)) {
+            return "RETAIL";
+        }
+        return normalized;
     }
 
     /** Optional ERP function from {@code sug_mai_birds_lifting_pkg.get_order_status}. */
@@ -282,13 +325,20 @@ public class LiftingScheduleSqlClient {
         return "(o.mobileuserempid = ? OR o.mobileuserempid = ?)";
     }
 
+    private static String trimUpdatedBy(String supervisorCode) {
+        if (supervisorCode == null) {
+            return null;
+        }
+        String trimmed = supervisorCode.trim();
+        return trimmed.length() > 64 ? trimmed.substring(0, 64) : trimmed;
+    }
+
     private String lookbackPredicate() {
         if (erpProperties.getScheduleListLookbackDays() <= 0) {
             return "";
         }
-        // Open orders stay visible even when order_request_date is old; trim old completed rows only.
         return """
-             AND (NVL(o.posted_flag, 'N') <> 'Y'
+             AND (NVL(o.lifting_status, 'PENDING') <> 'COMPLETED'
                   OR o.order_request_date IS NULL
                   OR o.order_request_date >= TRUNC(SYSDATE) - ?)
             """;
@@ -296,10 +346,10 @@ public class LiftingScheduleSqlClient {
 
     private static String buildStatusWhereClause(Set<ScheduleStatus> statuses) {
         if (statuses.isEmpty()) {
-            return " AND NVL(o.posted_flag, 'N') <> 'Y'";
+            return " AND NVL(o.lifting_status, 'PENDING') <> 'COMPLETED'";
         }
         if (statuses.size() == 1 && statuses.contains(ScheduleStatus.COMPLETED)) {
-            return " AND NVL(o.posted_flag, 'N') = 'Y'";
+            return " AND NVL(o.lifting_status, 'PENDING') = 'COMPLETED'";
         }
 
         List<String> parts = new ArrayList<>();
@@ -309,7 +359,7 @@ public class LiftingScheduleSqlClient {
 
         StringBuilder clause = new StringBuilder(" AND (");
         if (!statuses.contains(ScheduleStatus.COMPLETED)) {
-            clause.append("NVL(o.posted_flag, 'N') <> 'Y' AND (");
+            clause.append("NVL(o.lifting_status, 'PENDING') <> 'COMPLETED' AND (");
         }
         clause.append(String.join(" OR ", parts));
         clause.append(statuses.contains(ScheduleStatus.COMPLETED) ? ")" : "))");
@@ -320,18 +370,16 @@ public class LiftingScheduleSqlClient {
         return switch (status) {
             case ASSIGNED ->
                     """
-                    (NVL(o.source, 'X') <> 'MOBILE_DOWNLOADED'
-                     AND NVL(w.npick_status, 'OPEN') <> 'DOWNLOADED'
-                     AND (w.npick_status IS NULL OR UPPER(w.npick_status) NOT LIKE '%PROGRESS%'))
+                    (NVL(o.download_flag, 'N') <> 'Y'
+                     AND NVL(o.lifting_status, 'PENDING') = 'PENDING')
                     """;
             case DOWNLOADED ->
                     """
-                    (NVL(w.npick_status, 'OPEN') = 'DOWNLOADED'
-                     OR o.source = 'MOBILE_DOWNLOADED')
+                    (NVL(o.download_flag, 'N') = 'Y'
+                     AND NVL(o.lifting_status, 'PENDING') = 'DOWNLOADED')
                     """;
-            case IN_PROGRESS ->
-                    "(w.npick_status IS NOT NULL AND UPPER(w.npick_status) LIKE '%PROGRESS%')";
-            case COMPLETED -> "NVL(o.posted_flag, 'N') = 'Y'";
+            case IN_PROGRESS -> "NVL(o.lifting_status, 'PENDING') = 'IN_PROGRESS'";
+            case COMPLETED -> "NVL(o.lifting_status, 'PENDING') = 'COMPLETED'";
             case CLOSED -> "1 = 0";
         };
     }
@@ -345,58 +393,60 @@ public class LiftingScheduleSqlClient {
     }
 
     private LiftingSchedule mapSchedule(java.sql.ResultSet rs, boolean detail) throws java.sql.SQLException {
-        String postedFlag = rs.getString("posted_flag");
-        String npickStatus = rs.getString("npick_status");
-        String orderSource = rs.getString("order_source");
-        ScheduleStatus status = mapStatus(postedFlag, npickStatus, orderSource);
-        boolean downloaded = "Y".equalsIgnoreCase(npickStatus)
-                || "MOBILE_DOWNLOADED".equalsIgnoreCase(orderSource);
+        String downloadFlag = rs.getString("download_flag");
+        String liftingStatusRaw = rs.getString("lifting_status");
+        String deliveryStatusRaw = rs.getString("delivery_status");
+        ScheduleStatus status = mapScheduleStatus(liftingStatusRaw, downloadFlag);
+        boolean downloaded = "Y".equalsIgnoreCase(downloadFlag);
 
-        LiftingSchedule.LiftingScheduleBuilder builder = LiftingSchedule.builder()
-                .scheduleId(rs.getString("schedule_id"))
-                .supervisorId(rs.getString("supervisor_code"))
-                .orderSource(rs.getString("order_source"))
-                .scheduledAt(readInstant(rs, "order_request_date"))
-                .plannedQuantityKg(rs.getDouble("planned_quantity_kg"))
-                .declaredBodyWeightKg(rs.getDouble("body_wt"))
-                .branchCode(rs.getString("branch_code"))
-                .branchId(rs.getString("branch_id"))
-                .salesOrderNo(readLongObject(rs, "sales_order_no"))
-                .vehicleNumber(rs.getString("vehicle_no"))
-                .farmLocation(rs.getString("farm_location"))
-                .farmId(rs.getString("farm_id"))
-                .farmName(rs.getString("farm_name"))
-                .plannedQuantity(rs.getInt("planned_quantity"))
-                .operationType(rs.getString("operation_type"))
-                .scaleType(rs.getString("scale_type"))
-                .status(status)
-                .downloaded(downloaded)
-                .standardBirdsPerCage(erpProperties.getStandardBirdsPerCage())
-                .stableDurationMs(erpProperties.getStableDurationMs())
-                .captureMode("AUTO")
-                .completionPhotoRequired(true)
-                .geofenceRadiusMeters(erpProperties.getDefaultGeofenceRadiusMeters());
+        LiftingSchedule schedule = new LiftingSchedule();
+        schedule.setScheduleId(rs.getString("schedule_id"));
+        schedule.setSupervisorId(rs.getString("supervisor_code"));
+        schedule.setOrderSource(rs.getString("order_source"));
+        schedule.setScheduledAt(readInstant(rs, "order_request_date"));
+        schedule.setStartedAt(readInstant(rs, "started_date"));
+        schedule.setPlannedQuantityKg(rs.getDouble("planned_quantity_kg"));
+        schedule.setDeclaredBodyWeightKg(rs.getDouble("body_wt"));
+        schedule.setBranchCode(rs.getString("branch_code"));
+        schedule.setBranchId(rs.getString("branch_id"));
+        schedule.setSalesOrderNo(readLongObject(rs, "sales_order_no"));
+        schedule.setVehicleNumber(rs.getString("vehicle_no"));
+        schedule.setFarmLocation(rs.getString("farm_location"));
+        schedule.setFarmId(rs.getString("farm_id"));
+        schedule.setFarmName(rs.getString("farm_name"));
+        schedule.setPlannedQuantity(rs.getInt("planned_quantity"));
+        schedule.setOperationType(rs.getString("operation_type"));
+        schedule.setScaleType(rs.getString("scale_type"));
+        schedule.setStatus(status);
+        schedule.setDownloaded(downloaded);
+        schedule.setLiftingStatus(normalizeStatusToken(liftingStatusRaw));
+        schedule.setDeliveryStatus(normalizeStatusToken(deliveryStatusRaw));
+        schedule.setStandardBirdsPerCage(erpProperties.getStandardBirdsPerCage());
+        schedule.setStableDurationMs(erpProperties.getStableDurationMs());
+        schedule.setCaptureMode("AUTO");
+        schedule.setCompletionPhotoRequired(true);
+        schedule.setGeofenceRadiusMeters(erpProperties.getDefaultGeofenceRadiusMeters());
 
         if (detail) {
-            builder.farmLatitude(rs.getDouble("farm_latitude"))
-                    .farmLongitude(rs.getDouble("farm_longitude"))
-                    .farmerId(rs.getString("farmer_id"))
-                    .farmerName(rs.getString("farmer_name"))
-                    .farmerMobile(rs.getString("farmer_mobile"))
-                    .traderId(rs.getString("trader_id"))
-                    .traderName(rs.getString("trader_name"))
-                    .traderMobile(null)
-                    .productId(rs.getString("product_id"))
-                    .productName(rs.getString("product_name"))
-                    .toleranceMin(rs.getDouble("tolerance_min"))
-                    .toleranceMax(rs.getDouble("tolerance_max"));
+            schedule.setFarmLatitude(rs.getDouble("farm_latitude"));
+            schedule.setFarmLongitude(rs.getDouble("farm_longitude"));
+            schedule.setFarmerId(rs.getString("farmer_id"));
+            schedule.setFarmerName(rs.getString("farmer_name"));
+            schedule.setFarmerMobile(rs.getString("farmer_mobile"));
+            schedule.setTraderId(rs.getString("trader_id"));
+            schedule.setTraderName(rs.getString("trader_name"));
+            schedule.setTraderMobile(null);
+            schedule.setProductId(rs.getString("product_id"));
+            schedule.setProductName(rs.getString("product_name"));
+            schedule.setToleranceMin(rs.getDouble("tolerance_min"));
+            schedule.setToleranceMax(rs.getDouble("tolerance_max"));
         } else {
-            builder.farmLatitude(0)
-                    .farmLongitude(0)
-                    .toleranceMin(0)
-                    .toleranceMax(0);
+            schedule.setFarmLatitude(0);
+            schedule.setFarmLongitude(0);
+            schedule.setToleranceMin(0);
+            schedule.setToleranceMax(0);
         }
-        return builder.build();
+        return schedule;
     }
 
     private static Instant readInstant(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
@@ -409,17 +459,28 @@ public class LiftingScheduleSqlClient {
         return rs.wasNull() ? null : value;
     }
 
-    private static ScheduleStatus mapStatus(String postedFlag, String npickStatus, String orderSource) {
-        if ("Y".equalsIgnoreCase(postedFlag)) {
-            return ScheduleStatus.COMPLETED;
+    static ScheduleStatus mapScheduleStatus(String liftingStatus, String downloadFlag) {
+        String normalized = normalizeStatusToken(liftingStatus);
+        if (normalized != null) {
+            return switch (normalized) {
+                case "COMPLETED", "CANCELLED" -> ScheduleStatus.COMPLETED;
+                case "IN_PROGRESS" -> ScheduleStatus.IN_PROGRESS;
+                case "DOWNLOADED" -> ScheduleStatus.DOWNLOADED;
+                case "PENDING" -> ScheduleStatus.ASSIGNED;
+                default -> ScheduleStatus.ASSIGNED;
+            };
         }
-        if ("DOWNLOAD".equalsIgnoreCase(npickStatus) || "MOBILE_DOWNLOADED".equalsIgnoreCase(orderSource)) {
-            return ScheduleStatus.DOWNLOADED; // ERP stores downloaded status as 'Y' in NPICK_STATUS. DOWNLOADED changed to Y
-        }
-        if (npickStatus != null && npickStatus.toUpperCase(Locale.ROOT).contains("PROGRESS")) {
-            return ScheduleStatus.IN_PROGRESS;
+        if ("Y".equalsIgnoreCase(downloadFlag)) {
+            return ScheduleStatus.DOWNLOADED;
         }
         return ScheduleStatus.ASSIGNED;
+    }
+
+    private static String normalizeStatusToken(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return raw.trim().toUpperCase(Locale.ROOT);
     }
 
 }

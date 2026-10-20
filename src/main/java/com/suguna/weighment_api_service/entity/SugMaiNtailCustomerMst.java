@@ -67,7 +67,6 @@ public class SugMaiNtailCustomerMst {
 
     @Getter
     @Setter
-    @NoArgsConstructor
     public static class SugMaiNtailCustomerMstId implements java.io.Serializable {
         private BigDecimal customerId;
         private String customerNumber;

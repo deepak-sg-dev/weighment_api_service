@@ -2,13 +2,17 @@ package com.suguna.weighment_api_service.domain;
 
 import com.suguna.weighment_api_service.constants.ScheduleStatus;
 import java.time.Instant;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
 
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 @Getter
 @Setter
-@Builder
 public class LiftingSchedule {
 
     private String scheduleId;
@@ -40,6 +44,11 @@ public class LiftingSchedule {
     private String scaleType;
     private ScheduleStatus status;
     private boolean downloaded;
+    /** From {@code lifting_status} on {@code sug_mai_birds_lifting_order}. */
+    private String liftingStatus;
+    /** From {@code delivery_status}; nullable — API may fall back for retail. */
+    private String deliveryStatus;
+    private Instant startedAt;
     private int standardBirdsPerCage;
     private long stableDurationMs;
     private double toleranceMin;

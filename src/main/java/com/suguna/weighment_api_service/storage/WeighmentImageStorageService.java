@@ -18,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
  * <pre>
  * {baseDir}/lifting/{retail|wholesale}/{scheduleNo}/vehicle.jpg
  * {baseDir}/delivery/{retail|wholesale}/{scheduleNo}/order-{id}-shop.jpg
+ * {baseDir}/lifting/{retail|wholesale}/{scheduleNo}/other.jpg (category OTHER)
  * </pre>
  */
 @Service

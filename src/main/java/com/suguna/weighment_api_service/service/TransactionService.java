@@ -13,11 +13,20 @@ import com.suguna.weighment_api_service.dto.transaction.TransactionRetryRequest;
 import com.suguna.weighment_api_service.exception.ApiException;
 import com.suguna.weighment_api_service.exception.BusinessValidationException;
 import com.suguna.weighment_api_service.exception.ConflictException;
+import com.suguna.weighment_api_service.dto.transaction.WeighmentSubmissionDetailResponse;
+import com.suguna.weighment_api_service.dto.transaction.WeighmentSubmissionHistoryResponse;
+import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
+import com.suguna.weighment_api_service.integration.oracle.LiftingScheduleSqlClient;
 import com.suguna.weighment_api_service.integration.oracle.TransactionSqlClient;
+import com.suguna.weighment_api_service.integration.oracle.TransactionSqlClient.SubmissionHeaderSnapshot;
+import com.suguna.weighment_api_service.integration.oracle.WeighmentDetailSqlClient;
+import com.suguna.weighment_api_service.integration.oracle.WeighmentDetailSqlClient.StoredWeighmentDetailLine;
+import com.suguna.weighment_api_service.mapper.WeighmentSubmissionMapper;
 import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.repository.TransactionRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.util.WeighmentSubmitKeys;
+import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,15 +35,24 @@ public class TransactionService {
 
     private final TransactionRepository transactionRepository;
     private final TransactionSqlClient transactionSqlClient;
+    private final WeighmentDetailSqlClient weighmentDetailSqlClient;
+    private final WeighmentSubmissionMapper submissionMapper;
     private final ScheduleRepository scheduleRepository;
+    private final LiftingScheduleSqlClient liftingScheduleSqlClient;
 
     public TransactionService(
             TransactionRepository transactionRepository,
             TransactionSqlClient transactionSqlClient,
-            ScheduleRepository scheduleRepository) {
+            WeighmentDetailSqlClient weighmentDetailSqlClient,
+            WeighmentSubmissionMapper submissionMapper,
+            ScheduleRepository scheduleRepository,
+            LiftingScheduleSqlClient liftingScheduleSqlClient) {
         this.transactionRepository = transactionRepository;
         this.transactionSqlClient = transactionSqlClient;
+        this.weighmentDetailSqlClient = weighmentDetailSqlClient;
+        this.submissionMapper = submissionMapper;
         this.scheduleRepository = scheduleRepository;
+        this.liftingScheduleSqlClient = liftingScheduleSqlClient;
     }
 
     @Transactional
@@ -63,16 +81,59 @@ public class TransactionService {
 
         var existing = transactionSqlClient.findByScheduleId(scheduleId, supervisorCode);
         if (existing.isPresent() && transactionSqlClient.hasWeighmentDetailLines(transactionKey)) {
+            syncLiftingOrderAfterWeighment(supervisorCode, scheduleId, request);
             return existing.get().toResponse(scheduleId);
         }
 
         return transactionRepository.submitCompleted(supervisorCode, request);
     }
 
+    private void syncLiftingOrderAfterWeighment(
+            String supervisorCode, String scheduleId, SubmitCompletedWeighmentRequest request) {
+        String saleType = weighmentDetailSqlClient.resolveBusinessModule(
+                scheduleId, request.effectiveSaleType(), request.effectiveBirdType());
+        liftingScheduleSqlClient.markLiftingCompletedAfterWeighment(supervisorCode, scheduleId, saleType);
+    }
+
     public TransactionAcknowledgementResponse getAcknowledgement(
             AuthenticatedSupervisor supervisor, String transactionId) {
         return transactionRepository.getAcknowledgement(transactionId);
     }
+
+    public WeighmentSubmissionDetailResponse getSubmissionDetail(
+            AuthenticatedSupervisor supervisor, String scheduleId) {
+        SubmissionLoad load = loadSubmission(supervisor, scheduleId);
+        return submissionMapper.toDetailResponse(load.scheduleId(), load.header(), load.lines());
+    }
+
+    public WeighmentSubmissionHistoryResponse getSubmissionHistory(
+            AuthenticatedSupervisor supervisor, String scheduleId) {
+        SubmissionLoad load = loadSubmission(supervisor, scheduleId);
+        return submissionMapper.toHistoryResponse(load.scheduleId(), load.header(), load.lines());
+    }
+
+    private SubmissionLoad loadSubmission(AuthenticatedSupervisor supervisor, String scheduleId) {
+        String supervisorCode = supervisor.getSupervisor().getCode();
+        String normalizedScheduleId = WeighmentSubmitKeys.normalizeScheduleId(scheduleId);
+        scheduleRepository
+                .findByScheduleIdAndSupervisorId(normalizedScheduleId, supervisorCode)
+                .orElseThrow(() -> new ResourceNotFoundException("Schedule", normalizedScheduleId));
+
+        SubmissionHeaderSnapshot header = transactionSqlClient
+                .findSubmissionHeader(normalizedScheduleId, supervisorCode)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Weighment submission", normalizedScheduleId));
+
+        String transactionKey = WeighmentSubmitKeys.transactionKey(normalizedScheduleId);
+        List<StoredWeighmentDetailLine> lines = weighmentDetailSqlClient.listLiftingCompleteLines(transactionKey);
+        if (lines.isEmpty()) {
+            throw new ResourceNotFoundException("Weighment submission lines", normalizedScheduleId);
+        }
+        return new SubmissionLoad(normalizedScheduleId, header, lines);
+    }
+
+    private record SubmissionLoad(
+            String scheduleId, SubmissionHeaderSnapshot header, List<StoredWeighmentDetailLine> lines) {}
 
     public TransactionActionResponse retryTransaction(
             AuthenticatedSupervisor supervisor,

@@ -43,7 +43,6 @@ public class SugMaiLiftingRegUser {
 
     @Getter
     @Setter
-    @NoArgsConstructor
     public static class SugMaiLiftingRegUserId implements java.io.Serializable {
         private String userName;
         private String deviceId;

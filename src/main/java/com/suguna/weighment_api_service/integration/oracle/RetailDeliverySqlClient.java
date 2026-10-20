@@ -201,14 +201,14 @@ public class RetailDeliverySqlClient {
                 LIST_NTAIL_ORDERS_SQL,
                 (rs, rowNum) -> {
                     RetailOrderRow row = mapRow(rs);
-                    return RetailLocationDto.builder()
-                            .retailOrderId(row.orderNo())
-                            .retailerId(row.customerCode())
-                            .retailerName(row.customerName())
-                            .latitude(0)
-                            .longitude(0)
-                            .address(row.address())
-                            .build();
+                    RetailLocationDto location = new RetailLocationDto();
+                    location.setRetailOrderId(row.orderNo());
+                    location.setRetailerId(row.customerCode());
+                    location.setRetailerName(row.customerName());
+                    location.setLatitude(0);
+                    location.setLongitude(0);
+                    location.setAddress(row.address());
+                    return location;
                 },
                 schedule.getRetailBranchCode(),
                 schedule.getRegionCode(),
@@ -248,12 +248,7 @@ public class RetailDeliverySqlClient {
         ensureOrderMatchesRetailer(schedule, retailOrderId, request.getRetailerId());
         RetailOrderRow row = loadOrderRow(schedule, retailOrderId);
         if (isIdempotencyReplay(row.message(), request.getIdempotencyKey())) {
-            return CompleteRetailDeliveryResponse.builder()
-                    .success(true)
-                    .status("COMPLETED")
-                    .deliveryReference(deliveryReference(retailOrderId))
-                    .invoiceStatus("PENDING")
-                    .build();
+            return completedDeliveryResponse(retailOrderId, "COMPLETED");
         }
 
         String message = formatCompletionMessage(request);
@@ -270,12 +265,7 @@ public class RetailDeliverySqlClient {
         if (updated == 0) {
             throw new ResourceNotFoundException("Retail delivery order", retailOrderId);
         }
-        return CompleteRetailDeliveryResponse.builder()
-                .success(true)
-                .status("COMPLETED")
-                .deliveryReference(deliveryReference(retailOrderId))
-                .invoiceStatus("PENDING")
-                .build();
+        return completedDeliveryResponse(retailOrderId, "COMPLETED");
     }
 
     public Optional<String> findExpectedRetailerOtp(RetailScheduleContext schedule, String retailOrderId) {
@@ -284,12 +274,7 @@ public class RetailDeliverySqlClient {
     }
 
     public CompleteRetailDeliveryResponse triggerInvoice(String retailOrderId) {
-        return CompleteRetailDeliveryResponse.builder()
-                .success(true)
-                .status("PENDING")
-                .deliveryReference(deliveryReference(retailOrderId))
-                .invoiceStatus("PENDING")
-                .build();
+        return completedDeliveryResponse(retailOrderId, "PENDING");
     }
 
     public RetailInvoiceStatusResponse getInvoiceStatus(String retailOrderId) {
@@ -303,8 +288,7 @@ public class RetailDeliverySqlClient {
                             .success(true)
                             .syncStatus(generated ? "SYNCED" : "PENDING")
                             .invoiceStatus(generated ? "GENERATED" : "PENDING")
-                            .invoiceReference(
-                                    generated ? "INV-" + receipt : null)
+                            .invoiceReference(generated ? "INV-" + receipt : null)
                             .build();
                 },
                 orderNo);
@@ -425,6 +409,16 @@ public class RetailDeliverySqlClient {
             return "ARRIVED";
         }
         return "PENDING_DELIVERY";
+    }
+
+    private static CompleteRetailDeliveryResponse completedDeliveryResponse(
+            String retailOrderId, String status) {
+        return CompleteRetailDeliveryResponse.builder()
+                .success(true)
+                .status(status)
+                .deliveryReference(deliveryReference(retailOrderId))
+                .invoiceStatus("PENDING")
+                .build();
     }
 
     static String deliveryReference(String retailOrderId) {

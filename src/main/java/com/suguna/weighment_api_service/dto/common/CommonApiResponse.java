@@ -3,13 +3,13 @@ package com.suguna.weighment_api_service.dto.common;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.suguna.weighment_api_service.constants.ApiConstants;
 import com.suguna.weighment_api_service.constants.ErrorCode;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-
 import java.time.Instant;
 import java.util.Map;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
 
 /**
  * Standard envelope for Flutter integration.
@@ -17,10 +17,11 @@ import java.util.Map;
  * Success: {@code success}, {@code data}, {@code message}, {@code timestamp}<br>
  * Error: {@code success}, {@code errorCode}, {@code message}, {@code details}, {@code timestamp}
  */
-@Getter
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
+@Getter
+@Setter
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CommonApiResponse<T> {
 
@@ -43,12 +44,12 @@ public class CommonApiResponse<T> {
     }
 
     public static <T> CommonApiResponse<T> success(T data, String message) {
-        return CommonApiResponse.<T>builder()
-                .success(true)
-                .data(data)
-                .message(message)
-                .timestamp(Instant.now())
-                .build();
+        CommonApiResponse<T> response = new CommonApiResponse<>();
+        response.setSuccess(true);
+        response.setData(data);
+        response.setMessage(message);
+        response.setTimestamp(Instant.now());
+        return response;
     }
 
     public static CommonApiResponse<Map<String, Object>> successEmpty() {
@@ -56,18 +57,15 @@ public class CommonApiResponse<T> {
     }
 
     public static <T> CommonApiResponse<T> error(
-            String errorCode,
-            String message,
-            Map<String, Object> details,
-            String path) {
-        return CommonApiResponse.<T>builder()
-                .success(false)
-                .errorCode(errorCode)
-                .message(message)
-                .details(details == null ? Map.of() : details)
-                .path(path)
-                .timestamp(Instant.now())
-                .build();
+            String errorCode, String message, Map<String, Object> details, String path) {
+        CommonApiResponse<T> response = new CommonApiResponse<>();
+        response.setSuccess(false);
+        response.setErrorCode(errorCode);
+        response.setMessage(message);
+        response.setDetails(details == null ? Map.of() : details);
+        response.setPath(path);
+        response.setTimestamp(Instant.now());
+        return response;
     }
 
     public static <T> CommonApiResponse<T> error(ErrorCode errorCode) {
@@ -79,10 +77,7 @@ public class CommonApiResponse<T> {
     }
 
     public static <T> CommonApiResponse<T> error(
-            ErrorCode errorCode,
-            String message,
-            Map<String, Object> details,
-            String path) {
+            ErrorCode errorCode, String message, Map<String, Object> details, String path) {
         return error(errorCode.getErrorCode(), message, details, path);
     }
 }

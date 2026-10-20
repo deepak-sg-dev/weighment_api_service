@@ -11,11 +11,11 @@ import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.repository.RetailDeliveryRepository;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 public class ScheduleRetailEnrichmentService {
@@ -46,27 +46,9 @@ public class ScheduleRetailEnrichmentService {
 
     public List<ScheduleDeliveryDto> loadDetailDeliveries(String supervisorCode, LiftingSchedule schedule) {
         List<RetailRow> rows = loadRetailRows(supervisorCode, schedule);
-        List<ScheduleDeliveryDto> deliveries = new ArrayList<>();
-        for (int i = 0; i < rows.size(); i++) {
-            RetailRow row = rows.get(i);
-            deliveries.add(ScheduleDeliveryDto.builder()
-                    .deliveryId(row.order().getRetailOrderId())
-                    .sequence(i + 1)
-                    .dropPointName(
-                            row.order().getRetailerName() == null
-                                    ? row.order().getRetailerId()
-                                    : row.order().getRetailerName())
-                    .customerCode(row.order().getRetailerId())
-                    .customerName(row.order().getRetailerName())
-                    .location(row.location().getAddress())
-                    .latitude(nullIfZero(row.location().getLatitude()))
-                    .longitude(nullIfZero(row.location().getLongitude()))
-                    .geofenceRadiusMeters(schedule.getGeofenceRadiusMeters())
-                    .quantityKg(row.order().getOrderedQuantity())
-                    .status(mapDeliveryStatus(row.order().getStatus()))
-                    .build());
-        }
-        return deliveries;
+        return IntStream.range(0, rows.size())
+                .mapToObj(i -> toDeliveryDto(schedule, rows.get(i), i + 1))
+                .toList();
     }
 
     public String resolveDeliveryStatus(String supervisorCode, LiftingSchedule schedule) {
@@ -117,25 +99,44 @@ public class ScheduleRetailEnrichmentService {
     }
 
     private static RetailLocationDto emptyLocation(RetailDeliveryOrderSummaryDto order) {
-        return RetailLocationDto.builder()
-                .retailOrderId(order.getRetailOrderId())
-                .retailerId(order.getRetailerId())
-                .retailerName(order.getRetailerName())
-                .latitude(0)
-                .longitude(0)
-                .address(null)
-                .build();
+        RetailLocationDto location = new RetailLocationDto();
+        location.setRetailOrderId(order.getRetailOrderId());
+        location.setRetailerId(order.getRetailerId());
+        location.setRetailerName(order.getRetailerName());
+        location.setLatitude(0);
+        location.setLongitude(0);
+        location.setAddress(null);
+        return location;
     }
 
     private ScheduleOrderDto toListOrder(RetailRow row) {
-        return ScheduleOrderDto.builder()
-                .customerCode(row.order().getRetailerId())
-                .customerName(row.order().getRetailerName())
-                .orderedQuantityKg(row.order().getOrderedQuantity())
-                .location(row.location().getAddress())
-                .latitude(nullIfZero(row.location().getLatitude()))
-                .longitude(nullIfZero(row.location().getLongitude()))
-                .build();
+        ScheduleOrderDto dto = new ScheduleOrderDto();
+        dto.setOrderNo(row.order().getRetailOrderId());
+        dto.setCustomerCode(row.order().getRetailerId());
+        dto.setCustomerName(row.order().getRetailerName());
+        dto.setOrderedQuantityKg(row.order().getOrderedQuantity());
+        dto.setLocation(row.location().getAddress());
+        dto.setLatitude(nullIfZero(row.location().getLatitude()));
+        dto.setLongitude(nullIfZero(row.location().getLongitude()));
+        return dto;
+    }
+
+    private ScheduleDeliveryDto toDeliveryDto(LiftingSchedule schedule, RetailRow row, int sequence) {
+        RetailDeliveryOrderSummaryDto order = row.order();
+        String dropPointName = order.getRetailerName() == null ? order.getRetailerId() : order.getRetailerName();
+        ScheduleDeliveryDto dto = new ScheduleDeliveryDto();
+        dto.setDeliveryId(order.getRetailOrderId());
+        dto.setSequence(sequence);
+        dto.setDropPointName(dropPointName);
+        dto.setCustomerCode(order.getRetailerId());
+        dto.setCustomerName(order.getRetailerName());
+        dto.setLocation(row.location().getAddress());
+        dto.setLatitude(nullIfZero(row.location().getLatitude()));
+        dto.setLongitude(nullIfZero(row.location().getLongitude()));
+        dto.setGeofenceRadiusMeters(schedule.getGeofenceRadiusMeters());
+        dto.setQuantityKg(order.getOrderedQuantity());
+        dto.setStatus(mapDeliveryStatus(order.getStatus()));
+        return dto;
     }
 
     private static Double nullIfZero(double value) {

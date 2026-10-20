@@ -22,12 +22,6 @@ public class WeighmentDetailSqlClient {
     static final int STATUS_ACTIVE = 1;
     static final int SUBMIT_BATCH_NO = 1;
 
-    private static final String WEIGHMENT_SUPERVISOR_MATCH =
-            """
-             (TRIM(w.wm_supervisor_code) = TRIM(?)
-              OR LTRIM(TRIM(w.wm_supervisor_code), '0') = LTRIM(TRIM(?), '0'))
-            """;
-
     private static final String RESOLVE_TRANS_ID_SQL =
             """
             SELECT w.trans_id
@@ -35,8 +29,9 @@ public class WeighmentDetailSqlClient {
              WHERE """
             + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
             + """
-               AND """
-            + WEIGHMENT_SUPERVISOR_MATCH;
+             ORDER BY w.updated_date DESC NULLS LAST
+             FETCH FIRST 1 ROW ONLY
+            """;
 
     private static final String RESOLVE_LIFTING_SOURCE_SQL =
             """
@@ -52,6 +47,34 @@ public class WeighmentDetailSqlClient {
              WHERE d.local_transaction_id = TRIM(?)
                AND d.txn_phase = ?
                AND d.submit_batch_no = ?
+            """;
+
+    private static final String LIST_DTL_SQL =
+            """
+            SELECT TO_CHAR(d.dtl_id) AS dtl_id,
+                   d.line_sequence,
+                   d.cage_or_set_ref AS category,
+                   d.birds_applied,
+                   d.tare_wt,
+                   d.gross_wt,
+                   d.net_wt,
+                   d.avg_bird_wt,
+                   d.tolerance_status,
+                   d.row_status,
+                   d.captured_at,
+                   d.event_at,
+                   d.capture_lat,
+                   d.capture_long,
+                   d.capture_accuracy_m,
+                   d.scale_no,
+                   d.device_id,
+                   d.ext_json,
+                   d.creation_date
+              FROM sug_mai_birds_weighment_dtl d
+             WHERE d.local_transaction_id = TRIM(?)
+               AND d.txn_phase = ?
+               AND d.submit_batch_no = ?
+             ORDER BY d.line_sequence ASC, d.dtl_id ASC
             """;
 
     private static final String INSERT_DTL_SQL =
@@ -93,7 +116,10 @@ public class WeighmentDetailSqlClient {
                 creation_date
             ) VALUES (
                 sug_mai_birds_weighment_dtl_seq.NEXTVAL,
-                ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, SYSDATE
+                ?, ?, ?, ?, ?, ?,
+                NULL, NULL,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                SYSDATE
             )
             """;
 
@@ -113,15 +139,42 @@ public class WeighmentDetailSqlClient {
         return count != null && count > 0;
     }
 
+    public List<StoredWeighmentDetailLine> listLiftingCompleteLines(String scheduleTransactionKey) {
+        return jdbcTemplate.query(
+                LIST_DTL_SQL,
+                (rs, rowNum) ->
+                        new StoredWeighmentDetailLine(
+                                rs.getString("dtl_id"),
+                                getInteger(rs, "line_sequence"),
+                                rs.getString("category"),
+                                getInteger(rs, "birds_applied"),
+                                getDouble(rs, "tare_wt"),
+                                getDouble(rs, "gross_wt"),
+                                getDouble(rs, "net_wt"),
+                                getDouble(rs, "avg_bird_wt"),
+                                parseWeightDifference(rs.getString("tolerance_status")),
+                                rs.getString("row_status"),
+                                rs.getTimestamp("captured_at"),
+                                rs.getTimestamp("event_at"),
+                                getDouble(rs, "capture_lat"),
+                                getDouble(rs, "capture_long"),
+                                getDouble(rs, "capture_accuracy_m"),
+                                rs.getString("scale_no"),
+                                rs.getString("device_id"),
+                                rs.getString("ext_json"),
+                                rs.getTimestamp("creation_date")),
+                scheduleTransactionKey,
+                TXN_PHASE_LIFTING_COMPLETE,
+                SUBMIT_BATCH_NO);
+    }
+
     public Optional<Long> resolveTransId(String scheduleId, String supervisorCode) {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         List<Long> ids = jdbcTemplate.query(
                 RESOLVE_TRANS_ID_SQL,
                 (rs, rowNum) -> rs.getLong("trans_id"),
                 normalizedScheduleId,
-                normalizedScheduleId,
-                supervisorCode,
-                supervisorCode);
+                normalizedScheduleId);
         return ids.stream().findFirst();
     }
 
@@ -252,4 +305,46 @@ public class WeighmentDetailSqlClient {
     private static Timestamp toTimestamp(Instant instant) {
         return instant == null ? null : Timestamp.from(instant);
     }
+
+    private static Double getDouble(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        double value = rs.getDouble(column);
+        return rs.wasNull() ? null : value;
+    }
+
+    private static Integer getInteger(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        int value = rs.getInt(column);
+        return rs.wasNull() ? null : value;
+    }
+
+    private static Double parseWeightDifference(String toleranceStatus) {
+        if (toleranceStatus == null || toleranceStatus.isBlank()) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(toleranceStatus.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    public record StoredWeighmentDetailLine(
+            String dtlId,
+            Integer lineSequence,
+            String category,
+            Integer birdsApplied,
+            Double tareWt,
+            Double grossWt,
+            Double netWt,
+            Double avgBirdWt,
+            Double weightDifference,
+            String rowStatus,
+            Timestamp capturedAt,
+            Timestamp eventAt,
+            Double captureLat,
+            Double captureLong,
+            Double captureAccuracyM,
+            String scaleNo,
+            String deviceId,
+            String extJson,
+            Timestamp creationDate) {}
 }

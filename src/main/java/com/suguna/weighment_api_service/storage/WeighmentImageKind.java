@@ -5,7 +5,10 @@ public enum WeighmentImageKind {
     VEHICLE("vehicle"),
     COMPLETION("completion"),
     SHOP("shop"),
-    SIGNATURE("signature");
+    SIGNATURE("signature"),
+    CUSTOMER("customer"),
+    /** General / miscellaneous images for a schedule or order. */
+    OTHER("other");
 
     private final String fileStem;
 

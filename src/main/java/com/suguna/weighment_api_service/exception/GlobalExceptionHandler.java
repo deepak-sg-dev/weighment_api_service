@@ -78,11 +78,13 @@ public class GlobalExceptionHandler {
             ConstraintViolationException ex,
             WebRequest request) {
         List<FieldErrorDetail> fieldErrors = ex.getConstraintViolations().stream()
-                .map(v -> FieldErrorDetail.builder()
-                        .field(v.getPropertyPath().toString())
-                        .message(v.getMessage())
-                        .rejectedValue(v.getInvalidValue())
-                        .build())
+                .map(v -> {
+                    FieldErrorDetail detail = new FieldErrorDetail();
+                    detail.setField(v.getPropertyPath().toString());
+                    detail.setMessage(v.getMessage());
+                    detail.setRejectedValue(v.getInvalidValue());
+                    return detail;
+                })
                 .toList();
         Map<String, Object> details = new HashMap<>();
         details.put(FIELD_ERRORS_KEY, fieldErrors);
@@ -134,11 +136,11 @@ public class GlobalExceptionHandler {
     }
 
     private FieldErrorDetail toFieldErrorDetail(FieldError fieldError) {
-        return FieldErrorDetail.builder()
-                .field(fieldError.getField())
-                .message(fieldError.getDefaultMessage())
-                .rejectedValue(fieldError.getRejectedValue())
-                .build();
+        FieldErrorDetail detail = new FieldErrorDetail();
+        detail.setField(fieldError.getField());
+        detail.setMessage(fieldError.getDefaultMessage());
+        detail.setRejectedValue(fieldError.getRejectedValue());
+        return detail;
     }
 
     private ResponseEntity<CommonApiResponse<Void>> buildErrorResponse(
@@ -147,20 +149,18 @@ public class GlobalExceptionHandler {
             String message,
             Map<String, Object> details,
             WebRequest request) {
-        CommonApiResponse.CommonApiResponseBuilder<Void> builder = CommonApiResponse.<Void>builder()
-                .success(false)
-                .errorCode(errorCode)
-                .message(message)
-                .details(details == null || details.isEmpty() ? Map.of() : details);
-
+        CommonApiResponse<Void> body = new CommonApiResponse<>();
+        body.setSuccess(false);
+        body.setErrorCode(errorCode);
+        body.setMessage(message);
+        body.setDetails(details == null || details.isEmpty() ? Map.of() : details);
         if (responseProperties.isIncludeTimestamp()) {
-            builder.timestamp(Instant.now());
+            body.setTimestamp(Instant.now());
         }
         if (responseProperties.isIncludePath()) {
-            builder.path(resolveRequestPath(request));
+            body.setPath(resolveRequestPath(request));
         }
-
-        return ResponseEntity.status(httpStatus).body(builder.build());
+        return ResponseEntity.status(httpStatus).body(body);
     }
 
     private String resolveRequestPath(WebRequest request) {

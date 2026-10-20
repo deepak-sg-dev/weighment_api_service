@@ -74,7 +74,6 @@ public class SugMaiNtailOrder {
 
     @Getter
     @Setter
-    @NoArgsConstructor
     public static class SugMaiNtailOrderId implements java.io.Serializable {
         private BigDecimal orderNo;
         private String branchCode;
