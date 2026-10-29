@@ -10,6 +10,10 @@ public class ScheduleOrderDto {
     private String location;
     private Double latitude;
     private Double longitude;
+    /** Per-order delivery: PENDING, IN_PROGRESS, COMPLETED (retail only). */
+    private String deliveryStatus;
+    /** ISO-8601 UTC when delivery was started for this order. */
+    private String deliveryStartedAt;
 
     public ScheduleOrderDto() {}
 
@@ -67,5 +71,21 @@ public class ScheduleOrderDto {
 
     public void setLongitude(Double longitude) {
         this.longitude = longitude;
+    }
+
+    public String getDeliveryStatus() {
+        return deliveryStatus;
+    }
+
+    public void setDeliveryStatus(String deliveryStatus) {
+        this.deliveryStatus = deliveryStatus;
+    }
+
+    public String getDeliveryStartedAt() {
+        return deliveryStartedAt;
+    }
+
+    public void setDeliveryStartedAt(String deliveryStartedAt) {
+        this.deliveryStartedAt = deliveryStartedAt;
     }
 }

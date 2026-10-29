@@ -7,6 +7,7 @@ import com.suguna.weighment_api_service.dto.common.FieldErrorDetail;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -108,6 +111,31 @@ public class GlobalExceptionHandler {
                 request);
     }
 
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<CommonApiResponse<Void>> handleMaxUploadSize(
+            MaxUploadSizeExceededException ex,
+            WebRequest request) {
+        return buildErrorResponse(
+                ErrorCode.BAD_REQUEST.getHttpStatus(),
+                ErrorCode.BAD_REQUEST.getErrorCode(),
+                "Image exceeds maximum allowed upload size",
+                Map.of(),
+                request);
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<CommonApiResponse<Void>> handleMultipart(
+            MultipartException ex,
+            WebRequest request) {
+        log.debug("Multipart request failed: {}", ex.getMessage());
+        return buildErrorResponse(
+                ErrorCode.BAD_REQUEST.getHttpStatus(),
+                ErrorCode.BAD_REQUEST.getErrorCode(),
+                "Invalid multipart upload; send photo as multipart/form-data with field name photo, photos, signature, or customerPhoto",
+                Map.of(),
+                request);
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<CommonApiResponse<Void>> handleUnreadableBody(
             HttpMessageNotReadableException ex,
@@ -118,6 +146,25 @@ public class GlobalExceptionHandler {
                 ErrorCode.INVALID_JSON.getErrorCode(),
                 ErrorCode.INVALID_JSON.getDefaultMessage(),
                 Map.of(),
+                request);
+    }
+
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<CommonApiResponse<Void>> handleDataAccess(DataAccessException ex, WebRequest request) {
+        log.error("Database error on {}", resolveRequestPath(request), ex);
+        Map<String, Object> details = new HashMap<>();
+        Throwable root = ex.getMostSpecificCause();
+        if (root != null && root.getMessage() != null) {
+            details.put("databaseMessage", root.getMessage());
+        }
+        String message = responseProperties.isMaskInternalErrors()
+                ? "Database operation failed"
+                : (root != null && root.getMessage() != null ? root.getMessage() : ex.getMessage());
+        return buildErrorResponse(
+                ErrorCode.INTERNAL_ERROR.getHttpStatus(),
+                ErrorCode.INTERNAL_ERROR.getErrorCode(),
+                message,
+                details,
                 request);
     }
 

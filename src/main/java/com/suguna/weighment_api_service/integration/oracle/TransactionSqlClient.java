@@ -281,7 +281,9 @@ public class TransactionSqlClient {
         liftingScheduleSqlClient.markLiftingCompletedAfterWeighment(
                 supervisorCode, normalizedScheduleId, businessModule);
 
-        StoredTransaction stored = findByScheduleId(normalizedScheduleId, supervisorCode).orElseThrow();
+        StoredTransaction stored = findByScheduleId(normalizedScheduleId, supervisorCode)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Weighment transaction not found after submit for schedule " + normalizedScheduleId));
         return toSubmitResponse(stored, normalizedScheduleId);
     }
 

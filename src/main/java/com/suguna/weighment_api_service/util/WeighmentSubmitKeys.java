@@ -12,4 +12,10 @@ public final class WeighmentSubmitKeys {
     public static String transactionKey(String scheduleId) {
         return normalizeScheduleId(scheduleId);
     }
+
+    /** Per retail order — lifting and delivery lines share {@code sug_mai_birds_weighment_dtl}. */
+    public static String deliveryTransactionKey(String scheduleId, String retailOrderId) {
+        String order = retailOrderId == null ? "" : retailOrderId.trim();
+        return normalizeScheduleId(scheduleId) + "|" + order;
+    }
 }

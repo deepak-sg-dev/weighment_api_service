@@ -51,7 +51,7 @@ public class WeighmentHeaderSqlClient {
                    o.farmercode,
                    NVL(f.farm_name_village, o.farmername),
                    o.branchcode,
-                   NVL(o.breed, NVL(o.ordertype, 'BROILER')),
+                   NVL(NULLIF(TRIM(o.ordertype), ''), 'BROILER'),
                    NVL(o.no_of_birds, 0),
                    TO_CHAR(o.ordernumber),
                    o.vehicleno,

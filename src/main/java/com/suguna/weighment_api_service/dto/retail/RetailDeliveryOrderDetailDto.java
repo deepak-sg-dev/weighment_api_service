@@ -23,7 +23,12 @@ public class RetailDeliveryOrderDetailDto {
     private String itemName;
     private double orderedQuantity;
     private int orderedBirdCount;
+    /** Same as {@link #deliveryStatus}; kept for backward compatibility. */
     private String status;
+    /** Per-order delivery: PENDING, IN_PROGRESS, COMPLETED. */
+    private String deliveryStatus;
+    /** ISO-8601 UTC when delivery was started for this order; null if not started. */
+    private String deliveryStartedAt;
     private String branchCode;
     private String regionCode;
 }

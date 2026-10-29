@@ -6,7 +6,9 @@ import com.suguna.weighment_api_service.domain.LiftingSchedule;
 import com.suguna.weighment_api_service.dto.weighment.schedule.MarkScheduleDownloadedRequest;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleActionResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailResponse;
+import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListFilter;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListResponse;
+import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListStatusFilter;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleSummaryDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.StartScheduleRequest;
 import com.suguna.weighment_api_service.exception.ApiException;
@@ -21,16 +23,12 @@ import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import org.springframework.stereotype.Service;
 
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
 @Service
 public class ScheduleService {
-
-    private static final Set<ScheduleStatus> DEFAULT_LIST_STATUSES =
-            EnumSet.of(ScheduleStatus.ASSIGNED, ScheduleStatus.IN_PROGRESS, ScheduleStatus.DOWNLOADED);
 
     private final ScheduleRepository scheduleRepository;
     private final ScheduleRetailEnrichmentService retailEnrichmentService;
@@ -45,18 +43,27 @@ public class ScheduleService {
         this.scheduleOtpSqlClient = scheduleOtpSqlClient;
     }
 
-    public ScheduleListResponse getAssignedSchedules(AuthenticatedSupervisor supervisor, String statusCsv) {
-        Set<ScheduleStatus> statuses = ScheduleStatus.parseCsv(statusCsv);
-        if (statusCsv != null && !statusCsv.isBlank() && statuses.isEmpty()) {
-            throw new BadRequestException("Invalid status filter. Allowed: assigned, in_progress, downloaded");
+    public ScheduleListResponse getAssignedSchedules(
+            AuthenticatedSupervisor supervisor, String statusCsv, Integer lookbackDays, String scheduleIdsCsv) {
+        ScheduleListStatusFilter statusFilter = ScheduleListStatusFilter.fromQuery(statusCsv);
+        if (!statusFilter.isValid()) {
+            throw new BadRequestException(
+                    "Invalid status filter. Allowed: all, pending, downloaded, in_progress, completed "
+                            + "(comma-separated for multiple tabs)");
         }
-        if (statuses.isEmpty()) {
-            statuses = EnumSet.copyOf(DEFAULT_LIST_STATUSES);
+        if (lookbackDays != null && (lookbackDays < 0 || lookbackDays > 366)) {
+            throw new BadRequestException("lookbackDays must be between 0 and 366");
+        }
+        ScheduleListFilter listFilter;
+        try {
+            listFilter = ScheduleListFilter.fromQuery(lookbackDays, scheduleIdsCsv);
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException(ex.getMessage());
         }
 
         String supervisorCode = supervisor.getSupervisor().getCode();
-        List<LiftingSchedule> schedules =
-                scheduleRepository.findBySupervisorIdAndStatusIn(supervisorCode, Set.copyOf(statuses));
+        List<LiftingSchedule> schedules = scheduleRepository.findBySupervisorIdAndStatusIn(
+                supervisorCode, statusFilter.statuses(), listFilter, statusFilter.isIncludeAll());
 
         List<ScheduleSummaryDto> summaries = schedules.stream()
                 .map(schedule -> {
@@ -92,12 +99,12 @@ public class ScheduleService {
             String scheduleId,
             MarkScheduleDownloadedRequest request) {
         validateDevice(supervisor, request.getDeviceId());
-        LiftingSchedule schedule = loadSchedule(supervisor, scheduleId);
+        LiftingSchedule schedule = loadScheduleForMutation(supervisor, scheduleId);
         ensureNotClosed(schedule);
         scheduleRepository.markDownloaded(supervisor.getSupervisor().getCode(), scheduleId, request);
-        LiftingSchedule updated = loadSchedule(supervisor, scheduleId);
-
-        return scheduleActionResponse(updated, "Schedule marked as downloaded");
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        return ScheduleActionResponse.success(
+                normalizedScheduleId, ScheduleStatus.DOWNLOADED.name(), "Schedule marked as downloaded");
     }
 
     public ScheduleActionResponse startSchedule(
@@ -105,7 +112,7 @@ public class ScheduleService {
             String scheduleId,
             StartScheduleRequest request) {
         validateDevice(supervisor, request.getDeviceId());
-        LiftingSchedule schedule = loadSchedule(supervisor, scheduleId);
+        LiftingSchedule schedule = loadScheduleForMutation(supervisor, scheduleId);
         ensureNotClosed(schedule);
 
         if (schedule.getStatus() == ScheduleStatus.COMPLETED) {
@@ -113,27 +120,33 @@ public class ScheduleService {
         }
 
         scheduleRepository.start(supervisor.getSupervisor().getCode(), scheduleId, request);
-        LiftingSchedule updated = loadSchedule(supervisor, scheduleId);
-
-        return scheduleActionResponse(updated, "Schedule started");
-    }
-
-    private static ScheduleActionResponse scheduleActionResponse(LiftingSchedule schedule, String message) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         return ScheduleActionResponse.success(
-                schedule.getScheduleId(), schedule.getStatus().name(), message);
+                normalizedScheduleId, ScheduleStatus.IN_PROGRESS.name(), "Schedule started");
     }
 
     private LiftingSchedule loadSchedule(AuthenticatedSupervisor supervisor, String scheduleId) {
+        return loadSchedule(supervisor, scheduleId, false);
+    }
+
+    private LiftingSchedule loadScheduleForMutation(AuthenticatedSupervisor supervisor, String scheduleId) {
+        return loadSchedule(supervisor, scheduleId, true);
+    }
+
+    private LiftingSchedule loadSchedule(
+            AuthenticatedSupervisor supervisor, String scheduleId, boolean lightweight) {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
-        return scheduleRepository
-                .findByScheduleIdAndSupervisorId(normalizedScheduleId, supervisor.getSupervisor().getCode())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Schedule not found with id: "
-                                + normalizedScheduleId
-                                + " for supervisor "
-                                + supervisor.getSupervisor().getCode()
-                                + ". For ids containing '/' (e.g. 211342644/1.1), call GET /weighment/schedules/detail?scheduleId=... "
-                                + "instead of a path segment, or URL-encode the slash as %2F."));
+        String supervisorCode = supervisor.getSupervisor().getCode();
+        var found = lightweight
+                ? scheduleRepository.findForActionByScheduleIdAndSupervisorId(normalizedScheduleId, supervisorCode)
+                : scheduleRepository.findByScheduleIdAndSupervisorId(normalizedScheduleId, supervisorCode);
+        return found.orElseThrow(() -> new ResourceNotFoundException(
+                "Schedule not found with id: "
+                        + normalizedScheduleId
+                        + " for supervisor "
+                        + supervisorCode
+                        + ". For ids containing '/' (e.g. 211342644/1.1), call GET /weighment/schedules/detail?scheduleId=... "
+                        + "instead of a path segment, or URL-encode the slash as %2F."));
     }
 
     private void validateDevice(AuthenticatedSupervisor supervisor, String deviceId) {

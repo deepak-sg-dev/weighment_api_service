@@ -1,6 +1,8 @@
 package com.suguna.weighment_api_service.repository;
 
 import com.suguna.weighment_api_service.domain.RetailScheduleContext;
+import com.suguna.weighment_api_service.dto.delivery.StartRetailDeliveryOrderRequest;
+import com.suguna.weighment_api_service.dto.delivery.StartRetailDeliveryOrderResponse;
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentRequest;
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentResponse;
 import com.suguna.weighment_api_service.integration.oracle.DeliveryWeighmentSqlClient;
@@ -16,9 +18,20 @@ public class OracleDeliveryWeighmentRepository implements DeliveryWeighmentRepos
     }
 
     @Override
+    public StartRetailDeliveryOrderResponse startDeliveryOrder(
+            RetailScheduleContext schedule, String orderId, StartRetailDeliveryOrderRequest request) {
+        return deliveryWeighmentSqlClient.startDeliveryOrder(schedule, orderId, request);
+    }
+
+    @Override
     public SubmitDeliveryWeighmentResponse submitWeighment(
             RetailScheduleContext schedule, SubmitDeliveryWeighmentRequest request) {
         return deliveryWeighmentSqlClient.submitWeighment(schedule, request);
+    }
+
+    @Override
+    public void assertReadyForDeliveryEvidence(RetailScheduleContext schedule, String orderId) {
+        deliveryWeighmentSqlClient.assertReadyForDeliveryEvidence(schedule, orderId);
     }
 
     @Override

@@ -118,6 +118,8 @@ public class ScheduleRetailEnrichmentService {
         dto.setLocation(row.location().getAddress());
         dto.setLatitude(nullIfZero(row.location().getLatitude()));
         dto.setLongitude(nullIfZero(row.location().getLongitude()));
+        dto.setDeliveryStatus(row.order().getDeliveryStatus());
+        dto.setDeliveryStartedAt(row.order().getDeliveryStartedAt());
         return dto;
     }
 
@@ -135,7 +137,12 @@ public class ScheduleRetailEnrichmentService {
         dto.setLongitude(nullIfZero(row.location().getLongitude()));
         dto.setGeofenceRadiusMeters(schedule.getGeofenceRadiusMeters());
         dto.setQuantityKg(order.getOrderedQuantity());
-        dto.setStatus(mapDeliveryStatus(order.getStatus()));
+        String deliveryStatus = order.getDeliveryStatus() != null
+                ? order.getDeliveryStatus()
+                : mapDeliveryStatus(order.getStatus());
+        dto.setStatus(deliveryStatus);
+        dto.setDeliveryStatus(deliveryStatus);
+        dto.setDeliveryStartedAt(order.getDeliveryStartedAt());
         return dto;
     }
 
@@ -145,7 +152,12 @@ public class ScheduleRetailEnrichmentService {
 
     private String aggregateRetailRowStatuses(List<RetailRow> rows) {
         List<String> statuses = rows.stream()
-                .map(row -> mapDeliveryStatus(row.order().getStatus()))
+                .map(row -> {
+                    RetailDeliveryOrderSummaryDto order = row.order();
+                    return order.getDeliveryStatus() != null
+                            ? order.getDeliveryStatus()
+                            : mapDeliveryStatus(order.getStatus());
+                })
                 .toList();
         if (statuses.stream().allMatch("COMPLETED"::equals)) {
             return "COMPLETED";

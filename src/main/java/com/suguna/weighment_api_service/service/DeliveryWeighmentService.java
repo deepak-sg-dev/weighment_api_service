@@ -3,9 +3,13 @@ package com.suguna.weighment_api_service.service;
 import com.suguna.weighment_api_service.config.OracleErpProperties;
 import com.suguna.weighment_api_service.constants.ErrorCode;
 import com.suguna.weighment_api_service.constants.ErrorCodes;
+import com.suguna.weighment_api_service.constants.ScheduleStatus;
+import com.suguna.weighment_api_service.domain.LiftingSchedule;
 import com.suguna.weighment_api_service.domain.RetailScheduleContext;
 import com.suguna.weighment_api_service.dto.delivery.DeliveryCustomerAcknowledgementResponse;
 import com.suguna.weighment_api_service.dto.delivery.DeliveryShopPhotoResponse;
+import com.suguna.weighment_api_service.dto.delivery.StartRetailDeliveryOrderRequest;
+import com.suguna.weighment_api_service.dto.delivery.StartRetailDeliveryOrderResponse;
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentRequest;
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentRequest.PaymentInfo;
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentResponse;
@@ -14,6 +18,7 @@ import com.suguna.weighment_api_service.exception.BadRequestException;
 import com.suguna.weighment_api_service.exception.BusinessValidationException;
 import com.suguna.weighment_api_service.repository.DeliveryWeighmentRepository;
 import com.suguna.weighment_api_service.repository.RetailDeliveryRepository;
+import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.storage.WeighmentImageCategory;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
@@ -35,16 +40,33 @@ public class DeliveryWeighmentService {
     private final RetailDeliveryRepository retailDeliveryRepository;
     private final WeighmentImageUploadService imageUploadService;
     private final OracleErpProperties erpProperties;
+    private final ScheduleRepository scheduleRepository;
 
     public DeliveryWeighmentService(
             DeliveryWeighmentRepository deliveryWeighmentRepository,
             RetailDeliveryRepository retailDeliveryRepository,
             WeighmentImageUploadService imageUploadService,
-            OracleErpProperties erpProperties) {
+            OracleErpProperties erpProperties,
+            ScheduleRepository scheduleRepository) {
         this.deliveryWeighmentRepository = deliveryWeighmentRepository;
         this.retailDeliveryRepository = retailDeliveryRepository;
         this.imageUploadService = imageUploadService;
         this.erpProperties = erpProperties;
+        this.scheduleRepository = scheduleRepository;
+    }
+
+    @Transactional
+    public StartRetailDeliveryOrderResponse startRetailDeliveryOrder(
+            AuthenticatedSupervisor supervisor,
+            String orderId,
+            String scheduleId,
+            StartRetailDeliveryOrderRequest request) {
+        validateDevice(supervisor, request.getDeviceId());
+        String supervisorCode = supervisor.getSupervisor().getCode();
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        ensureLiftingCompleted(supervisorCode, normalizedScheduleId);
+        RetailScheduleContext schedule = loadSchedule(supervisor, scheduleId);
+        return deliveryWeighmentRepository.startDeliveryOrder(schedule, orderId.trim(), request);
     }
 
     @Transactional
@@ -55,6 +77,10 @@ public class DeliveryWeighmentService {
         validateRetailSaleType(request);
         validateShopValidation(request);
         validatePayment(request.getPayment());
+
+        String supervisorCode = supervisor.getSupervisor().getCode();
+        String normalizedScheduleId = ScheduleIdSupport.normalize(request.getScheduleId());
+        ensureLiftingCompleted(supervisorCode, normalizedScheduleId);
 
         RetailScheduleContext schedule = loadSchedule(supervisor, request.getScheduleId());
         validateRetailerOtp(schedule, request.getOrderId(), extractOtp(request));
@@ -143,6 +169,22 @@ public class DeliveryWeighmentService {
                 .build();
     }
 
+    private void ensureLiftingCompleted(String supervisorCode, String scheduleId) {
+        LiftingSchedule schedule = scheduleRepository
+                .findByScheduleIdAndSupervisorId(scheduleId, supervisorCode)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Schedule not found: " + scheduleId));
+        if (schedule.getStatus() == ScheduleStatus.COMPLETED) {
+            return;
+        }
+        String liftingStatus = schedule.getLiftingStatus();
+        if (liftingStatus != null && "COMPLETED".equalsIgnoreCase(liftingStatus.trim())) {
+            return;
+        }
+        throw new BusinessValidationException(
+                ErrorCodes.VALIDATION_PENDING,
+                "Complete farm lifting weighment before submitting delivery weighment");
+    }
+
     private RetailScheduleContext loadSchedule(AuthenticatedSupervisor supervisor, String scheduleId) {
         if (scheduleId == null || scheduleId.isBlank()) {
             throw new BadRequestException("scheduleId is required");
@@ -216,16 +258,8 @@ public class DeliveryWeighmentService {
     }
 
     private void validateRetailerOtp(RetailScheduleContext schedule, String orderId, String retailerOtp) {
-        if (!erpProperties.isRetailOtpValidationEnabled()) {
-            return;
-        }
-        var expected = retailDeliveryRepository.findExpectedRetailerOtp(schedule, orderId);
-        if (expected.isEmpty()) {
-            return;
-        }
-        if (retailerOtp == null || !expected.get().equals(retailerOtp.trim())) {
-            throw new BusinessValidationException(ErrorCodes.INVALID_RETAILER_OTP, "Invalid retailer OTP");
-        }
+        RetailRetailerOtpValidation.validate(
+                erpProperties, retailDeliveryRepository.resolveRetailerOtp(schedule, orderId), retailerOtp);
     }
 
     private static String extractOtp(SubmitDeliveryWeighmentRequest request) {

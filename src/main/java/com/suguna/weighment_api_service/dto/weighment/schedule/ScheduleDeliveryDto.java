@@ -12,7 +12,11 @@ public class ScheduleDeliveryDto {
     private Double longitude;
     private int geofenceRadiusMeters;
     private double quantityKg;
+    /** Same as {@link #deliveryStatus}. */
     private String status;
+    /** Per-order delivery: PENDING, IN_PROGRESS, COMPLETED. */
+    private String deliveryStatus;
+    private String deliveryStartedAt;
 
     public ScheduleDeliveryDto() {}
 
@@ -102,5 +106,21 @@ public class ScheduleDeliveryDto {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getDeliveryStatus() {
+        return deliveryStatus;
+    }
+
+    public void setDeliveryStatus(String deliveryStatus) {
+        this.deliveryStatus = deliveryStatus;
+    }
+
+    public String getDeliveryStartedAt() {
+        return deliveryStartedAt;
+    }
+
+    public void setDeliveryStartedAt(String deliveryStartedAt) {
+        this.deliveryStartedAt = deliveryStartedAt;
     }
 }

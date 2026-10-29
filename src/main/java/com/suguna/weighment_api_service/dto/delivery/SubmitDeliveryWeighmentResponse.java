@@ -21,8 +21,11 @@ public class SubmitDeliveryWeighmentResponse {
 
     private String orderId;
 
-    /** e.g. RECEIVED */
+    /** Submit step status, e.g. RECEIVED. */
     private String status;
+
+    /** Per-order delivery after this call: PENDING, IN_PROGRESS, COMPLETED. */
+    private String deliveryStatus;
 
     private String receivedAt;
 }

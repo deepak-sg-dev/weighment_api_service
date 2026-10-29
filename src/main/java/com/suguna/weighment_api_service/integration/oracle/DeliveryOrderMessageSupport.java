@@ -1,5 +1,6 @@
 package com.suguna.weighment_api_service.integration.oracle;
 
+import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -21,6 +22,35 @@ final class DeliveryOrderMessageSupport {
 
     static boolean isDeliveryWeighmentMessage(String message) {
         return message != null && message.startsWith(PREFIX);
+    }
+
+    static boolean hasDeliveryStarted(String message) {
+        return message != null
+                && isDeliveryWeighmentMessage(message)
+                && !segmentValue(message, "STARTED").isBlank();
+    }
+
+    static Instant parseDeliveryStartedAt(String message) {
+        String raw = segmentValue(message, "STARTED");
+        if (raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(raw);
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    static String mergeDeliveryStart(
+            String existing, String orderId, java.time.Instant startedAt, double latitude, double longitude) {
+        String base = normalizeBase(existing, orderId);
+        String startedToken =
+                startedAt == null ? "" : startedAt.toString();
+        base = upsertSegment(base, "STARTED", startedToken);
+        base = upsertSegment(base, "START_LAT", String.valueOf(latitude));
+        base = upsertSegment(base, "START_LON", String.valueOf(longitude));
+        return base;
     }
 
     static boolean hasWeighmentReceived(String message) {

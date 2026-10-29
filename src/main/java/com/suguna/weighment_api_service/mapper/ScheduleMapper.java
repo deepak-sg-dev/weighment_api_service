@@ -16,6 +16,7 @@ import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleRulesDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.PartyOtpDetailDto;
 import com.suguna.weighment_api_service.integration.oracle.ScheduleOtpSqlClient;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleSummaryDto;
+import com.suguna.weighment_api_service.util.BirdTypeNormalizer;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleSupervisorDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleVehicleDto;
 import java.time.Instant;
@@ -148,11 +149,19 @@ public final class ScheduleMapper {
         return otp;
     }
 
+    /** List/detail tab label aligned with {@code lifting_status} / download flag. */
     static String mapDownloadStatus(LiftingSchedule schedule) {
-        if (schedule.isDownloaded() || schedule.getStatus() == ScheduleStatus.DOWNLOADED) {
+        String lifting = resolveLiftingStatus(schedule);
+        if ("COMPLETED".equals(lifting) || "CANCELLED".equals(lifting)) {
+            return "COMPLETED".equals(lifting) ? "COMPLETED" : lifting;
+        }
+        if ("IN_PROGRESS".equals(lifting)) {
+            return "IN_PROGRESS";
+        }
+        if (schedule.isDownloaded() || schedule.getStatus() == ScheduleStatus.DOWNLOADED || "DOWNLOADED".equals(lifting)) {
             return "DOWNLOADED";
         }
-        return "ASSIGNED";
+        return "PENDING";
     }
 
     static String resolveLiftingStatus(LiftingSchedule schedule) {
@@ -189,11 +198,7 @@ public final class ScheduleMapper {
     }
 
     static String mapBirdType(LiftingSchedule schedule) {
-        String raw = schedule.getOperationType();
-        if (raw == null || raw.isBlank()) {
-            return "BROILER";
-        }
-        return raw.trim().toUpperCase(Locale.ROOT);
+        return BirdTypeNormalizer.fromOrderType(schedule.getOperationType());
     }
 
     static String formatScheduledAt(Instant instant) {

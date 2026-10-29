@@ -1,17 +1,16 @@
 package com.suguna.weighment_api_service.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 
-@Component
 @ConfigurationProperties(prefix = "app.weighment.upload")
 public class WeighmentUploadProperties {
 
     /**
-     * Root directory for all weighment verification images.
-     * Production: {@code /home/weighment}. Subfolders: {@code lifting/}, {@code delivery/}, then sale type and schedule no.
+     * @deprecated Prefer {@code file.upload-dir} / {@code file.weighment-verification-dir} via
+     *     {@link FilePathProperties}. Still bound for backward compatibility when file.* is unset.
      */
-    private String baseDir = "uploads";
+    @Deprecated
+    private String baseDir;
 
     /** Maximum image upload size in bytes (default 5 MB). */
     private long maxImageBytes = 5L * 1024 * 1024;

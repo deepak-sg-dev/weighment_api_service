@@ -73,6 +73,10 @@ public class WeighmentImageUploadService {
         String saleType = resolveSaleType(supervisor, normalizedScheduleId, domain);
         String refId = orderId == null || orderId.isBlank() ? null : orderId.trim();
 
+        if (linkDeliveryReceipt && domain == WeighmentImageDomain.DELIVERY && refId != null && retailSchedule != null) {
+            deliveryWeighmentRepository.assertReadyForDeliveryEvidence(retailSchedule, refId);
+        }
+
         var stored = imageStorageService.storeScheduleImages(
                 photos, domain, saleType, normalizedScheduleId, category.kind(), refId);
 

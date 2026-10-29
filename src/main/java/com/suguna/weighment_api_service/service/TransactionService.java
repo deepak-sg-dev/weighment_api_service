@@ -61,6 +61,7 @@ public class TransactionService {
         validateDevice(supervisor, request.getDeviceId());
         validateSupervisor(supervisor, request.getSupervisorId());
         validateSubmissionEvidence(request);
+        validateWeighmentTotals(request.getTotals());
 
         String supervisorCode = supervisor.getSupervisor().getCode();
         String scheduleId = WeighmentSubmitKeys.normalizeScheduleId(request.getScheduleId());
@@ -163,6 +164,20 @@ public class TransactionService {
         String id = supervisor.getSupervisor().getId();
         if (!supervisorId.trim().equals(code) && !supervisorId.trim().equals(id)) {
             throw new ApiException(ErrorCode.BAD_REQUEST, "supervisorId does not match authenticated session");
+        }
+    }
+
+    private void validateWeighmentTotals(SubmitCompletedWeighmentRequest.WeighmentTotals totals) {
+        if (totals == null) {
+            throw new BusinessValidationException(ErrorCodes.VALIDATION_PENDING, "Weighment totals are required");
+        }
+        if (totals.getTotalBirds() == null || totals.getTotalCagesOrBatches() == null) {
+            throw new BusinessValidationException(
+                    ErrorCodes.VALIDATION_PENDING, "totals.totalBirds and totals.totalCagesOrBatches are required");
+        }
+        if (totals.getTotalGross() == null || totals.getTotalNet() == null || totals.getTotalTare() == null) {
+            throw new BusinessValidationException(
+                    ErrorCodes.VALIDATION_PENDING, "totals totalGross, totalNet, and totalTare are required");
         }
     }
 

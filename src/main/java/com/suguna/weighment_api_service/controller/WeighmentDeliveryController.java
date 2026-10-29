@@ -2,6 +2,8 @@ package com.suguna.weighment_api_service.controller;
 
 import com.suguna.weighment_api_service.dto.delivery.DeliveryCustomerAcknowledgementResponse;
 import com.suguna.weighment_api_service.dto.delivery.DeliveryShopPhotoResponse;
+import com.suguna.weighment_api_service.dto.delivery.StartRetailDeliveryOrderRequest;
+import com.suguna.weighment_api_service.dto.delivery.StartRetailDeliveryOrderResponse;
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentRequest;
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentResponse;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
@@ -30,6 +32,16 @@ public class WeighmentDeliveryController {
 
     public WeighmentDeliveryController(DeliveryWeighmentService deliveryWeighmentService) {
         this.deliveryWeighmentService = deliveryWeighmentService;
+    }
+
+    @PostMapping("/{orderId}/start")
+    public ResponseEntity<StartRetailDeliveryOrderResponse> startRetailDeliveryOrder(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @PathVariable String orderId,
+            @RequestParam String scheduleId,
+            @Valid @RequestBody StartRetailDeliveryOrderRequest request) {
+        return ResponseEntity.ok(
+                deliveryWeighmentService.startRetailDeliveryOrder(supervisor, orderId, scheduleId, request));
     }
 
     @PostMapping

@@ -5,9 +5,12 @@ import com.suguna.weighment_api_service.config.OracleLiftingProperties;
 import com.suguna.weighment_api_service.constants.ScheduleStatus;
 import com.suguna.weighment_api_service.domain.LiftingSchedule;
 import com.suguna.weighment_api_service.dto.weighment.schedule.MarkScheduleDownloadedRequest;
+import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListFilter;
 import com.suguna.weighment_api_service.dto.weighment.schedule.StartScheduleRequest;
 import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.SimpleJdbcCall;
 import org.springframework.stereotype.Component;
@@ -23,6 +26,8 @@ import java.util.Set;
 
 @Component
 public class LiftingScheduleSqlClient {
+
+    private static final Logger log = LoggerFactory.getLogger(LiftingScheduleSqlClient.class);
 
     private static final String MOBILE_STATUS_COLUMNS =
             """
@@ -40,7 +45,8 @@ public class LiftingScheduleSqlClient {
                    o.mobileuserempid AS supervisor_code,
                    f.farm_code AS farm_id,
                    f.farm_name_village AS farm_name,
-                   NVL(o.breed, NVL(o.ordertype, 'BROILER')) AS operation_type,
+                   NVL(NULLIF(TRIM(o.ordertype), ''), 'BROILER') AS operation_type,
+                   o.breed AS breed,
                    NVL(o.weighment_type, 'HANGING') AS scale_type,
                    NVL(o.no_of_birds, 0) AS planned_quantity,
                    NVL(o.no_of_kgs, 0) AS planned_quantity_kg,
@@ -67,7 +73,8 @@ public class LiftingScheduleSqlClient {
                    o.mobileuserempid AS supervisor_code,
                    f.farm_code AS farm_id,
                    f.farm_name_village AS farm_name,
-                   NVL(o.breed, NVL(o.ordertype, 'BROILER')) AS operation_type,
+                   NVL(NULLIF(TRIM(o.ordertype), ''), 'BROILER') AS operation_type,
+                   o.breed AS breed,
                    NVL(o.weighment_type, 'HANGING') AS scale_type,
                    NVL(o.no_of_birds, 0) AS planned_quantity,
                    NVL(o.no_of_kgs, 0) AS planned_quantity_kg,
@@ -169,9 +176,25 @@ public class LiftingScheduleSqlClient {
                AND """
             + ORDER_SUPERVISOR_MATCH;
 
+    private static final String SYNC_RETAIL_DELIVERY_STATUS_SQL =
+            """
+            UPDATE sug_mai_birds_lifting_order o
+               SET o.delivery_status = ?,
+                   o.updated_at = SYSDATE,
+                   o.updated_by = ?
+             WHERE """
+            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+            + """
+               AND UPPER(TRIM(NVL(o.source, 'X'))) = UPPER(?)
+               AND NVL(o.application, ?) = ?
+               AND """
+            + ORDER_SUPERVISOR_MATCH;
+
     private final JdbcTemplate jdbcTemplate;
     private final OracleErpProperties erpProperties;
     private final OracleLiftingProperties liftingProperties;
+
+    private volatile SimpleJdbcCall cachedOrderStatusCall;
 
     public LiftingScheduleSqlClient(
             JdbcTemplate jdbcTemplate,
@@ -182,24 +205,32 @@ public class LiftingScheduleSqlClient {
         this.liftingProperties = liftingProperties;
     }
 
-    public List<LiftingSchedule> listSchedules(String supervisorCode, Set<ScheduleStatus> statuses) {
+    public List<LiftingSchedule> listSchedules(
+            String supervisorCode,
+            Set<ScheduleStatus> statuses,
+            ScheduleListFilter listFilter,
+            boolean includeAllStatuses) {
+        ScheduleListFilter filter = listFilter == null ? ScheduleListFilter.none() : listFilter;
         List<String> supervisorKeys = supervisorBindKeys(supervisorCode);
+        int lookbackDays = filter.effectiveLookbackDays(erpProperties);
         String sql = LIST_SCHEDULES_SELECT
                 + " WHERE "
                 + supervisorEqualityPredicate(supervisorKeys)
                 + " AND NVL(o.application, ?) = ?"
                 + LIST_ORDER_SOURCE_PREDICATE
-                + lookbackPredicate()
-                + buildStatusWhereClause(statuses);
+                + lookbackPredicate(lookbackDays, filter.requireOrderRequestDate())
+                + scheduleIdsPredicate(filter)
+                + buildStatusWhereClause(statuses, includeAllStatuses);
 
         List<Object> args = new ArrayList<>();
         args.addAll(supervisorKeys);
         args.add(erpProperties.getApplicationCode());
         args.add(erpProperties.getApplicationCode());
         args.add(erpProperties.getRetailLiftingSource());
-        if (erpProperties.getScheduleListLookbackDays() > 0) {
-            args.add(erpProperties.getScheduleListLookbackDays());
+        if (lookbackDays > 0) {
+            args.add(lookbackDays);
         }
+        appendScheduleIdBinds(args, filter);
 
         return jdbcTemplate.query(sql, (rs, rowNum) -> mapListSchedule(rs), args.toArray());
     }
@@ -216,6 +247,34 @@ public class LiftingScheduleSqlClient {
         List<LiftingSchedule> schedules = jdbcTemplate.query(
                 sql,
                 (rs, rowNum) -> mapDetailSchedule(rs),
+                supervisorCode,
+                supervisorCode,
+                erpProperties.getApplicationCode(),
+                erpProperties.getApplicationCode(),
+                normalizedScheduleId,
+                normalizedScheduleId);
+        if (schedules.isEmpty()) {
+            return null;
+        }
+        return schedules.get(0);
+    }
+
+    /**
+     * Lightweight row for start/download mutations (no GPS view join). Same visibility rules as
+     * {@link #getScheduleDetails(String, String)}.
+     */
+    public LiftingSchedule getScheduleForAction(String supervisorCode, String scheduleId) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        String sql = LIST_SCHEDULES_SELECT
+                + " WHERE "
+                + ORDER_SUPERVISOR_MATCH
+                + """
+                 AND NVL(o.application, ?) = ?
+                 AND """
+                + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH;
+        List<LiftingSchedule> schedules = jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> mapListSchedule(rs),
                 supervisorCode,
                 supervisorCode,
                 erpProperties.getApplicationCode(),
@@ -257,7 +316,9 @@ public class LiftingScheduleSqlClient {
         if (updated == 0) {
             throw new ResourceNotFoundException("Schedule", scheduleId);
         }
-        invokeOrderStatusValidation(scheduleId);
+        if (liftingProperties.isInvokeOrderStatusOnStart()) {
+            invokeOrderStatusValidation(scheduleId);
+        }
     }
 
     /**
@@ -291,19 +352,58 @@ public class LiftingScheduleSqlClient {
         return normalized;
     }
 
+    /** Updates {@code delivery_status} on the retail lifting order row (PENDING / IN_PROGRESS / COMPLETED). */
+    public void syncRetailDeliveryStatus(String supervisorCode, String scheduleId, String deliveryStatus) {
+        if (deliveryStatus == null || deliveryStatus.isBlank()) {
+            return;
+        }
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        String token = deliveryStatus.trim().toUpperCase(Locale.ROOT);
+        jdbcTemplate.update(
+                SYNC_RETAIL_DELIVERY_STATUS_SQL,
+                token,
+                trimUpdatedBy(supervisorCode),
+                normalizedScheduleId,
+                normalizedScheduleId,
+                erpProperties.getRetailLiftingSource(),
+                erpProperties.getApplicationCode(),
+                erpProperties.getApplicationCode(),
+                supervisorCode,
+                supervisorCode);
+    }
+
     /** Optional ERP function from {@code sug_mai_birds_lifting_pkg.get_order_status}. */
     public void invokeOrderStatusValidation(String scheduleId) {
+        long startedNanos = System.nanoTime();
         try {
-            SimpleJdbcCall call = new SimpleJdbcCall(jdbcTemplate)
-                    .withSchemaName(liftingProperties.getSchemaName())
-                    .withCatalogName(liftingProperties.getPackageName())
-                    .withFunctionName("get_order_status");
             Map<String, Object> in = new HashMap<>();
             in.put("p_line_id", ScheduleIdSupport.parseErpIndentAsLong(scheduleId));
-            call.execute(in);
+            orderStatusCall().execute(in);
         } catch (RuntimeException ex) {
-            // Non-blocking until ERP confirms line-id mapping.
+            log.debug("get_order_status skipped or failed for schedule {}: {}", scheduleId, ex.getMessage());
+        } finally {
+            long elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000L;
+            if (elapsedMs > 2_000L) {
+                log.warn("get_order_status for schedule {} took {} ms", scheduleId, elapsedMs);
+            }
         }
+    }
+
+    private SimpleJdbcCall orderStatusCall() {
+        SimpleJdbcCall call = cachedOrderStatusCall;
+        if (call == null) {
+            synchronized (this) {
+                call = cachedOrderStatusCall;
+                if (call == null) {
+                    call = new SimpleJdbcCall(jdbcTemplate)
+                            .withSchemaName(liftingProperties.getSchemaName())
+                            .withCatalogName(liftingProperties.getPackageName())
+                            .withFunctionName("get_order_status");
+                    cachedOrderStatusCall = call;
+                }
+            }
+        }
+        return call;
     }
 
     static List<String> supervisorBindKeys(String supervisorCode) {
@@ -333,18 +433,49 @@ public class LiftingScheduleSqlClient {
         return trimmed.length() > 64 ? trimmed.substring(0, 64) : trimmed;
     }
 
-    private String lookbackPredicate() {
-        if (erpProperties.getScheduleListLookbackDays() <= 0) {
+    private static String lookbackPredicate(int lookbackDays, boolean requireOrderRequestDate) {
+        if (lookbackDays <= 0) {
             return "";
         }
+        if (requireOrderRequestDate) {
+            return """
+                 AND o.order_request_date >= TRUNC(SYSDATE) - ?
+                """;
+        }
         return """
-             AND (NVL(o.lifting_status, 'PENDING') <> 'COMPLETED'
-                  OR o.order_request_date IS NULL
+             AND (o.order_request_date IS NULL
                   OR o.order_request_date >= TRUNC(SYSDATE) - ?)
             """;
     }
 
-    private static String buildStatusWhereClause(Set<ScheduleStatus> statuses) {
+    private static String scheduleIdsPredicate(ScheduleListFilter filter) {
+        if (!filter.restrictsScheduleIds()) {
+            return "";
+        }
+        StringBuilder clause = new StringBuilder(" AND (");
+        int i = 0;
+        for (String ignored : filter.scheduleIds()) {
+            if (i++ > 0) {
+                clause.append(" OR ");
+            }
+            clause.append("(").append(ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH).append(")");
+        }
+        clause.append(")");
+        return clause.toString();
+    }
+
+    private static void appendScheduleIdBinds(List<Object> args, ScheduleListFilter filter) {
+        for (String scheduleId : filter.scheduleIds()) {
+            Object[] binds = ScheduleIdSupport.scheduleIdBinds(scheduleId);
+            args.add(binds[0]);
+            args.add(binds[1]);
+        }
+    }
+
+    private static String buildStatusWhereClause(Set<ScheduleStatus> statuses, boolean includeAllStatuses) {
+        if (includeAllStatuses) {
+            return "";
+        }
         if (statuses.isEmpty()) {
             return " AND NVL(o.lifting_status, 'PENDING') <> 'COMPLETED'";
         }
@@ -371,12 +502,12 @@ public class LiftingScheduleSqlClient {
             case ASSIGNED ->
                     """
                     (NVL(o.download_flag, 'N') <> 'Y'
-                     AND NVL(o.lifting_status, 'PENDING') = 'PENDING')
+                     AND NVL(o.lifting_status, 'PENDING') NOT IN ('IN_PROGRESS', 'COMPLETED'))
                     """;
             case DOWNLOADED ->
                     """
                     (NVL(o.download_flag, 'N') = 'Y'
-                     AND NVL(o.lifting_status, 'PENDING') = 'DOWNLOADED')
+                     AND NVL(o.lifting_status, 'PENDING') NOT IN ('IN_PROGRESS', 'COMPLETED'))
                     """;
             case IN_PROGRESS -> "NVL(o.lifting_status, 'PENDING') = 'IN_PROGRESS'";
             case COMPLETED -> "NVL(o.lifting_status, 'PENDING') = 'COMPLETED'";
@@ -416,6 +547,7 @@ public class LiftingScheduleSqlClient {
         schedule.setFarmName(rs.getString("farm_name"));
         schedule.setPlannedQuantity(rs.getInt("planned_quantity"));
         schedule.setOperationType(rs.getString("operation_type"));
+        schedule.setProductName(rs.getString("breed"));
         schedule.setScaleType(rs.getString("scale_type"));
         schedule.setStatus(status);
         schedule.setDownloaded(downloaded);
