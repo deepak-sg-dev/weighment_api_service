@@ -72,9 +72,18 @@ public class SugMaiNtailOrder {
     @Column(name = "NTAIL_ORDER_ID")
     private BigDecimal ntailOrderId;
 
+    /** Optional — document/retail-order-delivery-start-ddl.sql */
+    @Column(name = "DELV_STATUS")
+    private String delvStatus;
+
+    @Column(name = "DELV_START_DT")
+    private LocalDateTime delvStartDt;
+
+    @Column(name = "DELV_END_DT")
+    private LocalDateTime delvEndDt;
+
     @Getter
     @Setter
-    @NoArgsConstructor
     public static class SugMaiNtailOrderId implements java.io.Serializable {
         private BigDecimal orderNo;
         private String branchCode;

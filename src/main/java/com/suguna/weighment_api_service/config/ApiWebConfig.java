@@ -8,7 +8,10 @@ import org.springframework.context.annotation.Configuration;
     ApiResponseProperties.class,
     JwtProperties.class,
     OracleLiftingProperties.class,
-    OracleErpProperties.class
+    OracleErpProperties.class,
+    FilePathProperties.class,
+    PdfFileProperties.class,
+    WeighmentUploadProperties.class
 })
 public class ApiWebConfig {
 }

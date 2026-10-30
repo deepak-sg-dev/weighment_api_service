@@ -7,6 +7,7 @@ import com.suguna.weighment_api_service.dto.common.FieldErrorDetail;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -78,11 +81,13 @@ public class GlobalExceptionHandler {
             ConstraintViolationException ex,
             WebRequest request) {
         List<FieldErrorDetail> fieldErrors = ex.getConstraintViolations().stream()
-                .map(v -> FieldErrorDetail.builder()
-                        .field(v.getPropertyPath().toString())
-                        .message(v.getMessage())
-                        .rejectedValue(v.getInvalidValue())
-                        .build())
+                .map(v -> {
+                    FieldErrorDetail detail = new FieldErrorDetail();
+                    detail.setField(v.getPropertyPath().toString());
+                    detail.setMessage(v.getMessage());
+                    detail.setRejectedValue(v.getInvalidValue());
+                    return detail;
+                })
                 .toList();
         Map<String, Object> details = new HashMap<>();
         details.put(FIELD_ERRORS_KEY, fieldErrors);
@@ -106,6 +111,31 @@ public class GlobalExceptionHandler {
                 request);
     }
 
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<CommonApiResponse<Void>> handleMaxUploadSize(
+            MaxUploadSizeExceededException ex,
+            WebRequest request) {
+        return buildErrorResponse(
+                ErrorCode.BAD_REQUEST.getHttpStatus(),
+                ErrorCode.BAD_REQUEST.getErrorCode(),
+                "Image exceeds maximum allowed upload size",
+                Map.of(),
+                request);
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<CommonApiResponse<Void>> handleMultipart(
+            MultipartException ex,
+            WebRequest request) {
+        log.debug("Multipart request failed: {}", ex.getMessage());
+        return buildErrorResponse(
+                ErrorCode.BAD_REQUEST.getHttpStatus(),
+                ErrorCode.BAD_REQUEST.getErrorCode(),
+                "Invalid multipart upload; send photo as multipart/form-data with field name photo, photos, signature, or customerPhoto",
+                Map.of(),
+                request);
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<CommonApiResponse<Void>> handleUnreadableBody(
             HttpMessageNotReadableException ex,
@@ -116,6 +146,25 @@ public class GlobalExceptionHandler {
                 ErrorCode.INVALID_JSON.getErrorCode(),
                 ErrorCode.INVALID_JSON.getDefaultMessage(),
                 Map.of(),
+                request);
+    }
+
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<CommonApiResponse<Void>> handleDataAccess(DataAccessException ex, WebRequest request) {
+        log.error("Database error on {}", resolveRequestPath(request), ex);
+        Map<String, Object> details = new HashMap<>();
+        Throwable root = ex.getMostSpecificCause();
+        if (root != null && root.getMessage() != null) {
+            details.put("databaseMessage", root.getMessage());
+        }
+        String message = responseProperties.isMaskInternalErrors()
+                ? "Database operation failed"
+                : (root != null && root.getMessage() != null ? root.getMessage() : ex.getMessage());
+        return buildErrorResponse(
+                ErrorCode.INTERNAL_ERROR.getHttpStatus(),
+                ErrorCode.INTERNAL_ERROR.getErrorCode(),
+                message,
+                details,
                 request);
     }
 
@@ -134,11 +183,11 @@ public class GlobalExceptionHandler {
     }
 
     private FieldErrorDetail toFieldErrorDetail(FieldError fieldError) {
-        return FieldErrorDetail.builder()
-                .field(fieldError.getField())
-                .message(fieldError.getDefaultMessage())
-                .rejectedValue(fieldError.getRejectedValue())
-                .build();
+        FieldErrorDetail detail = new FieldErrorDetail();
+        detail.setField(fieldError.getField());
+        detail.setMessage(fieldError.getDefaultMessage());
+        detail.setRejectedValue(fieldError.getRejectedValue());
+        return detail;
     }
 
     private ResponseEntity<CommonApiResponse<Void>> buildErrorResponse(
@@ -147,20 +196,18 @@ public class GlobalExceptionHandler {
             String message,
             Map<String, Object> details,
             WebRequest request) {
-        CommonApiResponse.CommonApiResponseBuilder<Void> builder = CommonApiResponse.<Void>builder()
-                .success(false)
-                .errorCode(errorCode)
-                .message(message)
-                .details(details == null || details.isEmpty() ? Map.of() : details);
-
+        CommonApiResponse<Void> body = new CommonApiResponse<>();
+        body.setSuccess(false);
+        body.setErrorCode(errorCode);
+        body.setMessage(message);
+        body.setDetails(details == null || details.isEmpty() ? Map.of() : details);
         if (responseProperties.isIncludeTimestamp()) {
-            builder.timestamp(Instant.now());
+            body.setTimestamp(Instant.now());
         }
         if (responseProperties.isIncludePath()) {
-            builder.path(resolveRequestPath(request));
+            body.setPath(resolveRequestPath(request));
         }
-
-        return ResponseEntity.status(httpStatus).body(builder.build());
+        return ResponseEntity.status(httpStatus).body(body);
     }
 
     private String resolveRequestPath(WebRequest request) {

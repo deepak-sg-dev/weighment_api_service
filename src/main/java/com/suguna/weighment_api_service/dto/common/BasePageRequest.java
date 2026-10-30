@@ -7,19 +7,28 @@ import lombok.Setter;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
 
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 @Getter
 @Setter
 public class BasePageRequest {
 
     @Min(0)
+    @Builder.Default
     private int page = 0;
 
     @Min(1)
     @Max(200)
+    @Builder.Default
     private int size = 20;
 
     private String sortBy;
+    @Builder.Default
     private Sort.Direction direction = Sort.Direction.ASC;
 
     public Pageable toPageable() {

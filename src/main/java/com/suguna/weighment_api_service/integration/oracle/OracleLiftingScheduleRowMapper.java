@@ -13,34 +13,34 @@ public class OracleLiftingScheduleRowMapper implements RowMapper<LiftingSchedule
 
     @Override
     public LiftingSchedule mapRow(ResultSet rs, int rowNum) throws SQLException {
-        return LiftingSchedule.builder()
-                .scheduleId(requiredString(rs, "SCHEDULE_ID", "SCHEDULEID", "ORDER_ID"))
-                .supervisorId(string(rs, "SUPERVISOR_ID", "SUPERVISORID"))
-                .farmId(string(rs, "FARM_ID", "FARMID"))
-                .farmName(string(rs, "FARM_NAME", "FARMNAME"))
-                .farmLatitude(number(rs, "FARM_LATITUDE", "LATITUDE", "FARM_LAT"))
-                .farmLongitude(number(rs, "FARM_LONGITUDE", "LONGITUDE", "FARM_LONG"))
-                .geofenceRadiusMeters(intValue(rs, "GEOFENCE_RADIUS_METERS", "GEOFENCE_RADIUS", "GEOFENCE_RAD"))
-                .farmerId(string(rs, "FARMER_ID", "FARMERID"))
-                .farmerName(string(rs, "FARMER_NAME", "FARMERNAME"))
-                .farmerMobile(string(rs, "FARMER_MOBILE", "FARMER_PHONE", "FARMER_MOBILENO"))
-                .traderId(string(rs, "TRADER_ID", "TRADERID"))
-                .traderName(string(rs, "TRADER_NAME", "TRADERNAME"))
-                .traderMobile(string(rs, "TRADER_MOBILE", "TRADER_PHONE", "TRADER_MOBILENO"))
-                .productId(string(rs, "PRODUCT_ID", "PRODUCT_CODE", "PRODUCTID"))
-                .productName(string(rs, "PRODUCT_NAME", "PRODUCTNAME"))
-                .plannedQuantity(intValue(rs, "PLANNED_QUANTITY", "PLANNED_QTY", "SCHEDULED_QTY"))
-                .operationType(string(rs, "OPERATION_TYPE", "OPERATIONTYPE", "BIRD_TYPE"))
-                .scaleType(string(rs, "SCALE_TYPE", "SCALETYPE", "WEIGH_SCALE_TYPE"))
-                .status(parseStatus(string(rs, "STATUS", "SCHEDULE_STATUS")))
-                .downloaded(booleanValue(rs, "DOWNLOADED", "IS_DOWNLOADED", "DOWNLOAD_FLAG"))
-                .standardBirdsPerCage(intValue(rs, "STANDARD_BIRDS_PER_CAGE", "BIRDS_PER_CAGE"))
-                .stableDurationMs(longValue(rs, "STABLE_DURATION_MS", "STABLE_DURATION"))
-                .toleranceMin(number(rs, "TOLERANCE_MIN", "TOL_MIN"))
-                .toleranceMax(number(rs, "TOLERANCE_MAX", "TOL_MAX"))
-                .captureMode(string(rs, "CAPTURE_MODE", "CAPTUREMODE"))
-                .completionPhotoRequired(booleanValue(rs, "COMPLETION_PHOTO_REQUIRED", "PHOTO_REQUIRED"))
-                .build();
+        LiftingSchedule schedule = new LiftingSchedule();
+        schedule.setScheduleId(requiredString(rs, "SCHEDULE_ID", "SCHEDULEID", "ORDER_ID"));
+        schedule.setSupervisorId(string(rs, "SUPERVISOR_ID", "SUPERVISORID"));
+        schedule.setFarmId(string(rs, "FARM_ID", "FARMID"));
+        schedule.setFarmName(string(rs, "FARM_NAME", "FARMNAME"));
+        schedule.setFarmLatitude(number(rs, "FARM_LATITUDE", "LATITUDE", "FARM_LAT"));
+        schedule.setFarmLongitude(number(rs, "FARM_LONGITUDE", "LONGITUDE", "FARM_LONG"));
+        schedule.setGeofenceRadiusMeters(intValue(rs, "GEOFENCE_RADIUS_METERS", "GEOFENCE_RADIUS", "GEOFENCE_RAD"));
+        schedule.setFarmerId(string(rs, "FARMER_ID", "FARMERID"));
+        schedule.setFarmerName(string(rs, "FARMER_NAME", "FARMERNAME"));
+        schedule.setFarmerMobile(string(rs, "FARMER_MOBILE", "FARMER_PHONE", "FARMER_MOBILENO"));
+        schedule.setTraderId(string(rs, "TRADER_ID", "TRADERID"));
+        schedule.setTraderName(string(rs, "TRADER_NAME", "TRADERNAME"));
+        schedule.setTraderMobile(string(rs, "TRADER_MOBILE", "TRADER_PHONE", "TRADER_MOBILENO"));
+        schedule.setProductId(string(rs, "PRODUCT_ID", "PRODUCT_CODE", "PRODUCTID"));
+        schedule.setProductName(string(rs, "PRODUCT_NAME", "PRODUCTNAME"));
+        schedule.setPlannedQuantity(intValue(rs, "PLANNED_QUANTITY", "PLANNED_QTY", "SCHEDULED_QTY"));
+        schedule.setOperationType(string(rs, "OPERATION_TYPE", "OPERATIONTYPE", "BIRD_TYPE"));
+        schedule.setScaleType(string(rs, "SCALE_TYPE", "SCALETYPE", "WEIGH_SCALE_TYPE"));
+        schedule.setStatus(parseStatus(string(rs, "STATUS", "SCHEDULE_STATUS")));
+        schedule.setDownloaded(booleanValue(rs, "DOWNLOADED", "IS_DOWNLOADED", "DOWNLOAD_FLAG"));
+        schedule.setStandardBirdsPerCage(intValue(rs, "STANDARD_BIRDS_PER_CAGE", "BIRDS_PER_CAGE"));
+        schedule.setStableDurationMs(longValue(rs, "STABLE_DURATION_MS", "STABLE_DURATION"));
+        schedule.setToleranceMin(number(rs, "TOLERANCE_MIN", "TOL_MIN"));
+        schedule.setToleranceMax(number(rs, "TOLERANCE_MAX", "TOL_MAX"));
+        schedule.setCaptureMode(string(rs, "CAPTURE_MODE", "CAPTUREMODE"));
+        schedule.setCompletionPhotoRequired(booleanValue(rs, "COMPLETION_PHOTO_REQUIRED", "PHOTO_REQUIRED"));
+        return schedule;
     }
 
     private static ScheduleStatus parseStatus(String raw) {

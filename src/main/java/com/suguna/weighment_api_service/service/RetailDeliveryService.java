@@ -108,15 +108,7 @@ public class RetailDeliveryService {
     }
 
     private void validateRetailerOtp(RetailScheduleContext schedule, String retailOrderId, String retailerOtp) {
-        if (!erpProperties.isRetailOtpValidationEnabled()) {
-            return;
-        }
-        var expected = retailDeliveryRepository.findExpectedRetailerOtp(schedule, retailOrderId);
-        if (expected.isEmpty()) {
-            return;
-        }
-        if (retailerOtp == null || !expected.get().equals(retailerOtp.trim())) {
-            throw new BusinessValidationException(ErrorCodes.INVALID_RETAILER_OTP, "Invalid retailer OTP");
-        }
+        RetailRetailerOtpValidation.validate(
+                erpProperties, retailDeliveryRepository.resolveRetailerOtp(schedule, retailOrderId), retailerOtp);
     }
 }

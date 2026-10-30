@@ -10,10 +10,10 @@ import com.suguna.weighment_api_service.dto.retail.RetailDeliveryOrderSummaryDto
 import com.suguna.weighment_api_service.dto.retail.RetailInvoiceStatusResponse;
 import com.suguna.weighment_api_service.dto.retail.RetailLocationDto;
 import com.suguna.weighment_api_service.integration.oracle.RetailDeliverySqlClient;
+import com.suguna.weighment_api_service.integration.oracle.RetailRetailerOtpResolution;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Optional;
 
 @Repository
 public class OracleRetailDeliveryRepository implements RetailDeliveryRepository {
@@ -57,8 +57,8 @@ public class OracleRetailDeliveryRepository implements RetailDeliveryRepository 
     }
 
     @Override
-    public Optional<String> findExpectedRetailerOtp(RetailScheduleContext schedule, String retailOrderId) {
-        return retailDeliverySqlClient.findExpectedRetailerOtp(schedule, retailOrderId);
+    public RetailRetailerOtpResolution resolveRetailerOtp(RetailScheduleContext schedule, String retailOrderId) {
+        return retailDeliverySqlClient.resolveRetailerOtp(schedule, retailOrderId);
     }
 
     @Override

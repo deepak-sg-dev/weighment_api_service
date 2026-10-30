@@ -51,8 +51,11 @@ public class WeighmentScheduleController {
     @GetMapping
     public ResponseEntity<ScheduleListResponse> listSchedules(
             @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
-            @RequestParam(required = false) String status) {
-        return ResponseEntity.ok(scheduleService.getAssignedSchedules(supervisor, status));
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Integer lookbackDays,
+            @RequestParam(required = false) String scheduleIds) {
+        return ResponseEntity.ok(
+                scheduleService.getAssignedSchedules(supervisor, status, lookbackDays, scheduleIds));
     }
 
     /** Use for composite schedule ids (e.g. {@code 211342644/1.1}) — slashes cannot be extra path segments. */
