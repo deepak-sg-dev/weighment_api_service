@@ -20,6 +20,9 @@ public class SecurityConfig {
     private static final String[] PUBLIC_ENDPOINTS = {
         "/auth/device-login",
         "/system/ping",
+        // TEMP ADMIN DEVELOPMENT
+            "/api/admin/**",
+
         "/v3/api-docs/**",
         "/swagger-ui.html",
         "/swagger-ui/**",
