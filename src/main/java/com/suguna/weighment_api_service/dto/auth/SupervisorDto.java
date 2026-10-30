@@ -1,11 +1,17 @@
 package com.suguna.weighment_api_service.dto.auth;
 
 import com.suguna.weighment_api_service.domain.SupervisorProfile;
-import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
 
-@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 @Builder
+@Getter
+@Setter
 public class SupervisorDto {
 
     private String id;

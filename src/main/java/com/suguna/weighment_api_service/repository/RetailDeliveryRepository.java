@@ -11,7 +11,7 @@ import com.suguna.weighment_api_service.dto.retail.RetailInvoiceStatusResponse;
 import com.suguna.weighment_api_service.dto.retail.RetailLocationDto;
 
 import java.util.List;
-import java.util.Optional;
+import com.suguna.weighment_api_service.integration.oracle.RetailRetailerOtpResolution;
 
 public interface RetailDeliveryRepository {
 
@@ -29,7 +29,7 @@ public interface RetailDeliveryRepository {
     CompleteRetailDeliveryResponse completeDelivery(
             RetailScheduleContext schedule, String retailOrderId, CompleteRetailDeliveryRequest request);
 
-    Optional<String> findExpectedRetailerOtp(RetailScheduleContext schedule, String retailOrderId);
+    RetailRetailerOtpResolution resolveRetailerOtp(RetailScheduleContext schedule, String retailOrderId);
 
     CompleteRetailDeliveryResponse triggerInvoice(String retailOrderId);
 

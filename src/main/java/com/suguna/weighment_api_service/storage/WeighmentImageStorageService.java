@@ -1,5 +1,6 @@
 package com.suguna.weighment_api_service.storage;
 
+import com.suguna.weighment_api_service.config.FilePathProperties;
 import com.suguna.weighment_api_service.config.WeighmentUploadProperties;
 import com.suguna.weighment_api_service.constants.ErrorCode;
 import com.suguna.weighment_api_service.exception.ApiException;
@@ -7,6 +8,9 @@ import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -16,8 +20,9 @@ import org.springframework.web.multipart.MultipartFile;
  * Stores verification images under:
  *
  * <pre>
- * {baseDir}/lifting/{retail|wholesale}/{scheduleNo}/vehicle.jpg
- * {baseDir}/delivery/{retail|wholesale}/{scheduleNo}/order-{id}-shop.jpg
+ * {baseDir}/lifting/{retail|wholesale}/{scheduleNo}/{scheduleId}-{yyMMddHHmmssSSS}.jpg
+ * {baseDir}/delivery/.../{orderId}-{yyMMddHHmmssSSS}.jpg
+ * Multiple files in one request share the same datetime token with -001, -002 suffixes.
  * </pre>
  */
 @Service
@@ -26,9 +31,12 @@ public class WeighmentImageStorageService {
     private static final Set<String> ALLOWED_CONTENT_TYPES =
             Set.of("image/jpeg", "image/jpg", "image/png");
 
+    private final FilePathProperties filePathProperties;
     private final WeighmentUploadProperties uploadProperties;
 
-    public WeighmentImageStorageService(WeighmentUploadProperties uploadProperties) {
+    public WeighmentImageStorageService(
+            FilePathProperties filePathProperties, WeighmentUploadProperties uploadProperties) {
+        this.filePathProperties = filePathProperties;
         this.uploadProperties = uploadProperties;
     }
 
@@ -48,7 +56,8 @@ public class WeighmentImageStorageService {
             String scheduleId,
             WeighmentImageKind kind,
             String optionalRefId) {
-        return storeScheduleImage(photo, domain, saleType, scheduleId, kind, optionalRefId, 1, 1);
+        return storeScheduleImage(
+                photo, domain, saleType, scheduleId, kind, optionalRefId, newCompactDateTimeToken(), 1, 1);
     }
 
     public java.util.List<StoredWeighmentImage> storeScheduleImages(
@@ -59,10 +68,19 @@ public class WeighmentImageStorageService {
             WeighmentImageKind kind,
             String optionalRefId) {
         int total = photos.size();
+        String compactDateTime = newCompactDateTimeToken();
         java.util.List<StoredWeighmentImage> stored = new java.util.ArrayList<>(total);
         for (int i = 0; i < total; i++) {
             stored.add(storeScheduleImage(
-                    photos.get(i), domain, saleType, scheduleId, kind, optionalRefId, i + 1, total));
+                    photos.get(i),
+                    domain,
+                    saleType,
+                    scheduleId,
+                    kind,
+                    optionalRefId,
+                    compactDateTime,
+                    i + 1,
+                    total));
         }
         return stored;
     }
@@ -74,6 +92,7 @@ public class WeighmentImageStorageService {
             String scheduleId,
             WeighmentImageKind kind,
             String optionalRefId,
+            String compactDateTime,
             int sequenceOneBased,
             int totalInBatch) {
         validatePhoto(photo);
@@ -82,7 +101,13 @@ public class WeighmentImageStorageService {
         String scheduleFolder = sanitizePathSegment(normalizedSchedule);
         String saleFolder = saleTypeFolder(saleType);
         String fileName = buildFileName(
-                kind, optionalRefId, extensionFor(photo.getContentType()), sequenceOneBased, totalInBatch);
+                kind,
+                normalizedSchedule,
+                optionalRefId,
+                extensionFor(photo),
+                compactDateTime,
+                sequenceOneBased,
+                totalInBatch);
 
         Path directory = resolveBaseDir()
                 .resolve(domain.folderName())
@@ -102,7 +127,8 @@ public class WeighmentImageStorageService {
     }
 
     public Path resolveBaseDir() {
-        return Path.of(uploadProperties.getBaseDir()).toAbsolutePath().normalize();
+        String root = filePathProperties.resolveWeighmentVerificationRoot(uploadProperties.getBaseDir());
+        return Path.of(root).toAbsolutePath().normalize();
     }
 
     public static String saleTypeFolder(String saleType) {
@@ -123,29 +149,52 @@ public class WeighmentImageStorageService {
         return value.trim().replaceAll("[^a-zA-Z0-9._-]", "_");
     }
 
+    private static final DateTimeFormatter COMPACT_UTC =
+            DateTimeFormatter.ofPattern("yyMMddHHmmssSSS").withZone(ZoneOffset.UTC);
+
+    /**
+     * Short names: {@code {typeCode}-{scheduleId|orderId}-{yyMMddHHmmssSSS}}. Folder path holds domain/sale/schedule.
+     */
     static String buildFileName(
             WeighmentImageKind kind,
-            String optionalRefId,
+            String scheduleId,
+            String orderId,
             String extension,
+            String compactDateTime,
             int sequenceOneBased,
             int totalInBatch) {
-        String suffix = totalInBatch > 1 ? "-" + String.format("%03d", sequenceOneBased) : "";
-        if (kind == WeighmentImageKind.SHOP && optionalRefId != null && !optionalRefId.isBlank()) {
-            return "order-" + sanitizePathSegment(optionalRefId) + "-" + kind.fileStem() + suffix + extension;
+        String batchSeq = totalInBatch > 1 ? "-" + String.format("%03d", sequenceOneBased) : "";
+        String idPart = fileNamePrefix(kind, scheduleId, orderId);
+        return kind.fileCode() + "-" + idPart + "-" + compactDateTime + batchSeq + extension;
+    }
+
+    static String fileNamePrefix(WeighmentImageKind kind, String scheduleId, String orderId) {
+        if (usesOrderIdInFileName(kind)) {
+            if (orderId == null || orderId.isBlank()) {
+                return sanitizePathSegment(scheduleId);
+            }
+            return sanitizePathSegment(orderId);
         }
-        if (optionalRefId != null && !optionalRefId.isBlank()) {
-            return kind.fileStem() + "-" + sanitizePathSegment(optionalRefId) + suffix + extension;
-        }
-        return kind.fileStem() + suffix + extension;
+        return sanitizePathSegment(scheduleId);
+    }
+
+    static boolean usesOrderIdInFileName(WeighmentImageKind kind) {
+        return kind == WeighmentImageKind.SHOP
+                || kind == WeighmentImageKind.SIGNATURE
+                || kind == WeighmentImageKind.CUSTOMER;
+    }
+
+    /** UTC {@code yyMMddHHmmssSSS} (17 digits), e.g. {@code 251026143045123}. */
+    static String newCompactDateTimeToken() {
+        return COMPACT_UTC.format(Instant.now());
     }
 
     private void validatePhoto(MultipartFile photo) {
         if (photo == null || photo.isEmpty()) {
             throw new ApiException(ErrorCode.BAD_REQUEST, "photo is required");
         }
-        String contentType = photo.getContentType();
-        if (contentType == null
-                || ALLOWED_CONTENT_TYPES.stream().noneMatch(t -> t.equalsIgnoreCase(contentType.trim()))) {
+        String contentType = resolveImageContentType(photo);
+        if (contentType == null) {
             throw new ApiException(ErrorCode.BAD_REQUEST, "photo must be JPEG or PNG");
         }
         if (photo.getSize() > uploadProperties.getMaxImageBytes()) {
@@ -153,8 +202,43 @@ public class WeighmentImageStorageService {
         }
     }
 
-    private static String extensionFor(String contentType) {
-        if (contentType != null && contentType.toLowerCase(Locale.ROOT).contains("png")) {
+    /**
+     * Mobile clients (e.g. Flutter) often send {@code application/octet-stream} or omit Content-Type;
+     * infer from filename when needed.
+     */
+    static String resolveImageContentType(MultipartFile photo) {
+        String raw = photo.getContentType();
+        if (raw != null && !raw.isBlank()) {
+            String contentType = raw.trim();
+            if (ALLOWED_CONTENT_TYPES.stream().anyMatch(t -> t.equalsIgnoreCase(contentType))) {
+                return contentType.toLowerCase(Locale.ROOT).contains("png") ? "image/png" : "image/jpeg";
+            }
+            if (contentType.toLowerCase(Locale.ROOT).startsWith("image/")) {
+                if (contentType.toLowerCase(Locale.ROOT).contains("png")) {
+                    return "image/png";
+                }
+                if (contentType.toLowerCase(Locale.ROOT).contains("jpeg")
+                        || contentType.toLowerCase(Locale.ROOT).contains("jpg")) {
+                    return "image/jpeg";
+                }
+            }
+        }
+        String name = photo.getOriginalFilename();
+        if (name != null) {
+            String lower = name.toLowerCase(Locale.ROOT);
+            if (lower.endsWith(".png")) {
+                return "image/png";
+            }
+            if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+                return "image/jpeg";
+            }
+        }
+        return null;
+    }
+
+    private static String extensionFor(MultipartFile photo) {
+        String contentType = resolveImageContentType(photo);
+        if (contentType != null && contentType.contains("png")) {
             return ".png";
         }
         return ".jpg";

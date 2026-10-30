@@ -34,17 +34,21 @@ public class ScheduleOtpService {
         ensureScheduleAccessible(supervisor, scheduleId);
         ScheduleOtpRow row = requireOtpRow(supervisor, scheduleId);
 
+        PartyOtpStatusDto farmer = PartyOtpStatusDto.builder()
+                .required(row.isFarmerOtpRequired())
+                .mobile(row.farmerMobile())
+                .build();
+
+        PartyOtpStatusDto trader = PartyOtpStatusDto.builder()
+                .required(row.isTraderOtpRequired())
+                .mobile(null)
+                .build();
+
         return ScheduleOtpStatusResponse.builder()
                 .success(true)
                 .scheduleId(scheduleId)
-                .farmer(PartyOtpStatusDto.builder()
-                        .required(row.isFarmerOtpRequired())
-                        .mobile(row.farmerMobile())
-                        .build())
-                .trader(PartyOtpStatusDto.builder()
-                        .required(row.isTraderOtpRequired())
-                        .mobile(null)
-                        .build())
+                .farmer(farmer)
+                .trader(trader)
                 .build();
     }
 

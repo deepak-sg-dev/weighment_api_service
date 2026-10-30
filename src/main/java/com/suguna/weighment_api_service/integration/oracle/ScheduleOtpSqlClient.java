@@ -79,6 +79,14 @@ public class ScheduleOtpSqlClient {
             return otpMatches(traderOtp, enteredOtp);
         }
 
+        public String farmerOtpValue() {
+            return isFarmerOtpRequired() ? normalizeOtp(farmerOtp) : null;
+        }
+
+        public String traderOtpValue() {
+            return isTraderOtpRequired() ? normalizeOtp(traderOtp) : null;
+        }
+
         private static boolean otpConfigured(Object stored) {
             if (stored == null) {
                 return false;

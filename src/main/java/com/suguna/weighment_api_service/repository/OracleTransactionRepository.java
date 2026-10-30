@@ -33,19 +33,17 @@ public class OracleTransactionRepository implements TransactionRepository {
     public TransactionActionResponse retryTransaction(
             String transactionId, TransactionRetryRequest request) {
         transactionSqlClient.retryTransaction(transactionId, request);
-        return TransactionActionResponse.builder()
-                .success(true)
-                .message("Retry submitted")
-                .build();
+        return transactionActionResponse("Retry submitted");
     }
 
     @Override
     public TransactionActionResponse submitCorrection(
             String transactionId, TransactionCorrectionRequest request) {
         transactionSqlClient.submitCorrection(transactionId, request);
-        return TransactionActionResponse.builder()
-                .success(true)
-                .message("Correction submitted")
-                .build();
+        return transactionActionResponse("Correction submitted");
+    }
+
+    private static TransactionActionResponse transactionActionResponse(String message) {
+        return TransactionActionResponse.builder().success(true).message(message).build();
     }
 }

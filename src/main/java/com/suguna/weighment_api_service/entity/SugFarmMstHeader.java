@@ -218,7 +218,6 @@ public class SugFarmMstHeader {
 
     @Getter
     @Setter
-    @NoArgsConstructor
     public static class SugFarmMstHeaderId implements java.io.Serializable {
         private BigDecimal farmId;
         private String farmCode;

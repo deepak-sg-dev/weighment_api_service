@@ -3,6 +3,7 @@ package com.suguna.weighment_api_service.repository;
 import com.suguna.weighment_api_service.constants.ScheduleStatus;
 import com.suguna.weighment_api_service.domain.LiftingSchedule;
 import com.suguna.weighment_api_service.dto.weighment.schedule.MarkScheduleDownloadedRequest;
+import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListFilter;
 import com.suguna.weighment_api_service.dto.weighment.schedule.StartScheduleRequest;
 import com.suguna.weighment_api_service.integration.oracle.LiftingScheduleSqlClient;
 import org.springframework.stereotype.Repository;
@@ -21,13 +22,22 @@ public class OracleBirdsLiftingScheduleRepository implements ScheduleRepository 
     }
 
     @Override
-    public List<LiftingSchedule> findBySupervisorIdAndStatusIn(String supervisorId, Set<ScheduleStatus> statuses) {
-        return scheduleSqlClient.listSchedules(supervisorId, statuses);
+    public List<LiftingSchedule> findBySupervisorIdAndStatusIn(
+            String supervisorId,
+            Set<ScheduleStatus> statuses,
+            ScheduleListFilter listFilter,
+            boolean includeAllStatuses) {
+        return scheduleSqlClient.listSchedules(supervisorId, statuses, listFilter, includeAllStatuses);
     }
 
     @Override
     public Optional<LiftingSchedule> findByScheduleIdAndSupervisorId(String scheduleId, String supervisorId) {
         return Optional.ofNullable(scheduleSqlClient.getScheduleDetails(supervisorId, scheduleId));
+    }
+
+    @Override
+    public Optional<LiftingSchedule> findForActionByScheduleIdAndSupervisorId(String scheduleId, String supervisorId) {
+        return Optional.ofNullable(scheduleSqlClient.getScheduleForAction(supervisorId, scheduleId));
     }
 
     @Override

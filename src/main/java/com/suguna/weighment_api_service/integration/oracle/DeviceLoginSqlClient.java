@@ -84,7 +84,7 @@ public class DeviceLoginSqlClient {
                             .code(rs.getString("supervisor_code"))
                             .name(rs.getString("supervisor_name"))
                             .mobile(rs.getString("supervisor_mobile"))
-                            .branchId(rs.getString("branch_code"))
+                            .branchId(rs.getString("branch_id"))
                             .branchName(rs.getString("branch_name"))
                             .active(enabled)
                             .build();
