@@ -12,12 +12,17 @@ import com.suguna.weighment_api_service.admin.dtos.responses.UpdateDeviceStatusR
 
 import com.suguna.weighment_api_service.admin.services.DeviceService;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin/devices")
+@Tag(
+        name = "Device Management",
+        description = "Device listing, creation, update and status management APIs"
+)
 public class DeviceController {
 
     @Autowired

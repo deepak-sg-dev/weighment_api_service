@@ -3,11 +3,16 @@ package com.suguna.weighment_api_service.admin.controller;
 import com.suguna.weighment_api_service.admin.dtos.requests.UpdateBranchConfigurationRequestDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.*;
 import com.suguna.weighment_api_service.admin.services.ConfigurationService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin/configuration")
+@Tag(
+        name = "Branch Configuration",
+        description = "Branch configuration and effective configuration APIs"
+)
 public class ConfigurationController {
 
     @Autowired

@@ -82,14 +82,11 @@ public class AuthServiceImpl implements AuthService {
         LoginResponseDTO response =
                 new LoginResponseDTO();
 
-        response.setAccessToken(
-                "TEMP_TOKEN");
+
 
         response.setUser(
                 userDto);
 
-        response.setExpiresIn(
-                3600L);
 
         return response;
     }
