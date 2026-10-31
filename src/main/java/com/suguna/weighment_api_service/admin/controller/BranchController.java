@@ -5,12 +5,17 @@ import com.suguna.weighment_api_service.admin.dtos.responses.BranchListResponseD
 import com.suguna.weighment_api_service.admin.response.ApiResponse;
 import com.suguna.weighment_api_service.admin.response.Response;
 import com.suguna.weighment_api_service.admin.services.BranchService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin/branches")
+@Tag(
+        name = "Admin Authentication",
+        description = "Admin authentication and user management APIs"
+)
 public class BranchController {
 
     @Autowired

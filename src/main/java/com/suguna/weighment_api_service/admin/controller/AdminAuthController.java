@@ -8,11 +8,16 @@ import com.suguna.weighment_api_service.admin.dtos.requests.ForgotPasswordReques
 import com.suguna.weighment_api_service.admin.response.Response;
 import com.suguna.weighment_api_service.admin.services.AuthService;
 import org.springframework.beans.factory.annotation.Autowired;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin/auth")
+@Tag(
+        name = "Admin Authentication",
+        description = "Admin authentication and user management APIs"
+)
 public class AdminAuthController {
 
     @Autowired
