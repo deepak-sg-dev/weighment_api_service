@@ -14,6 +14,7 @@ import com.suguna.weighment_api_service.admin.repositories.MenuRepository;
 import com.suguna.weighment_api_service.admin.repositories.RoleMenuAccessRepository;
 import com.suguna.weighment_api_service.admin.repositories.RoleRepository;
 import com.suguna.weighment_api_service.admin.services.AuthService;
+import com.suguna.weighment_api_service.security.JwtService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,9 @@ public class AuthServiceImpl implements AuthService {
 
     @Autowired
     private RoleMenuAccessRepository roleMenuAccessRepository;
+
+    @Autowired
+    private JwtService jwtService;
 
     @Override
     public LoginResponseDTO login(LoginRequestDTO request) {
@@ -79,14 +83,20 @@ public class AuthServiceImpl implements AuthService {
                         "reports.read"
                 ));
 
+        String accessToken =
+                jwtService.generateAdminAccessToken(
+                        user.getId(),
+                        user.getUserName(),
+                        role.getRoleName());
+
         LoginResponseDTO response =
                 new LoginResponseDTO();
 
+        response.setAccessToken(accessToken);
 
+        response.setExpiresIn(28800L);
 
-        response.setUser(
-                userDto);
-
+        response.setUser(userDto);
 
         return response;
     }
