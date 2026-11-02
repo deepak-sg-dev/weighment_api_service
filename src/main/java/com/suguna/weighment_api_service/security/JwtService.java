@@ -24,6 +24,11 @@ public class JwtService {
     private static final String CLAIM_BRANCH_ID = "branchId";
     private static final String CLAIM_BRANCH_NAME = "branchName";
 
+    // COMMON CLAIMS
+    private static final String CLAIM_USER_TYPE = "userType";
+    private static final String CLAIM_USERNAME = "username";
+    private static final String CLAIM_ROLE = "role";
+
     private final JwtProperties jwtProperties;
     private final SecretKey secretKey;
 
@@ -32,11 +37,20 @@ public class JwtService {
         this.secretKey = resolveKey(jwtProperties.getSecretKey());
     }
 
-    public String generateAccessToken(String deviceId, SupervisorProfile supervisor) {
+    /**
+     * APP JWT TOKEN
+     */
+    public String generateAccessToken(
+            String deviceId,
+            SupervisorProfile supervisor) {
+
         Instant now = Instant.now();
-        Instant expiry = now.plusMillis(jwtProperties.getExpirationTime());
+        Instant expiry =
+                now.plusMillis(jwtProperties.getExpirationTime());
+
         return Jwts.builder()
                 .subject(supervisor.getId())
+                .claim(CLAIM_USER_TYPE, "APP") // IMPORTANT
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))
                 .claim(CLAIM_DEVICE_ID, deviceId)
@@ -49,44 +63,140 @@ public class JwtService {
                 .compact();
     }
 
-    public Optional<AuthenticatedSupervisor> parseToken(String token) {
+    /**
+     * ADMIN JWT TOKEN
+     */
+    public String generateAdminAccessToken(
+            Long userId,
+            String username,
+            String role) {
+
+        Instant now = Instant.now();
+        Instant expiry =
+                now.plusMillis(jwtProperties.getExpirationTime());
+
+        return Jwts.builder()
+                .subject(String.valueOf(userId))
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(expiry))
+                .claim(CLAIM_USER_TYPE, "ADMIN")
+                .claim(CLAIM_USERNAME, username)
+                .claim(CLAIM_ROLE, role)
+                .signWith(secretKey)
+                .compact();
+    }
+
+    /**
+     * APP TOKEN PARSER
+     */
+    public Optional<AuthenticatedSupervisor> parseToken(
+            String token) {
+
         try {
+
             Claims claims = Jwts.parser()
                     .verifyWith(secretKey)
                     .build()
                     .parseSignedClaims(token)
                     .getPayload();
-            SupervisorProfile supervisor = SupervisorProfile.builder()
-                    .id(claims.getSubject())
-                    .code(claimAsString(claims, CLAIM_SUPERVISOR_CODE))
-                    .name(claimAsString(claims, CLAIM_SUPERVISOR_NAME))
-                    .mobile(claimAsString(claims, CLAIM_SUPERVISOR_MOBILE))
-                    .branchId(claimAsString(claims, CLAIM_BRANCH_ID))
-                    .branchName(claimAsString(claims, CLAIM_BRANCH_NAME))
-                    .active(true)
-                    .build();
-            String deviceId = claimAsString(claims, CLAIM_DEVICE_ID);
-            return Optional.of(new AuthenticatedSupervisor(deviceId, supervisor));
+
+            String userType =
+                    claimAsString(claims, CLAIM_USER_TYPE);
+
+            // Allow only APP tokens
+            if (!"APP".equals(userType)) {
+                return Optional.empty();
+            }
+
+            SupervisorProfile supervisor =
+                    SupervisorProfile.builder()
+                            .id(claims.getSubject())
+                            .code(claimAsString(
+                                    claims,
+                                    CLAIM_SUPERVISOR_CODE))
+                            .name(claimAsString(
+                                    claims,
+                                    CLAIM_SUPERVISOR_NAME))
+                            .mobile(claimAsString(
+                                    claims,
+                                    CLAIM_SUPERVISOR_MOBILE))
+                            .branchId(claimAsString(
+                                    claims,
+                                    CLAIM_BRANCH_ID))
+                            .branchName(claimAsString(
+                                    claims,
+                                    CLAIM_BRANCH_NAME))
+                            .active(true)
+                            .build();
+
+            String deviceId =
+                    claimAsString(
+                            claims,
+                            CLAIM_DEVICE_ID);
+
+            return Optional.of(
+                    new AuthenticatedSupervisor(
+                            deviceId,
+                            supervisor));
+
         } catch (RuntimeException ex) {
             return Optional.empty();
         }
     }
 
-    private static String claimAsString(Claims claims, String name) {
-        Object value = claims.get(name);
-        return value == null ? null : String.valueOf(value);
+    /**
+     * COMMON CLAIM EXTRACTION
+     */
+    public Claims extractClaims(String token) {
+
+        return Jwts.parser()
+                .verifyWith(secretKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
-    private static SecretKey resolveKey(String secret) {
-        if (secret == null || secret.isBlank()) {
-            throw new IllegalStateException("security.jwt.secret-key must be configured");
+    /**
+     * COMMON TOKEN VALIDATION
+     */
+    public boolean isTokenValid(String token) {
+
+        try {
+            extractClaims(token);
+            return true;
+        } catch (Exception ex) {
+            return false;
         }
+    }
+
+    private static String claimAsString(
+            Claims claims,
+            String name) {
+
+        Object value = claims.get(name);
+
+        return value == null
+                ? null
+                : String.valueOf(value);
+    }
+
+    private static SecretKey resolveKey(
+            String secret) {
+
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "security.jwt.secret-key must be configured");
+        }
+
         byte[] keyBytes;
+
         try {
             keyBytes = Decoders.BASE64.decode(secret);
         } catch (RuntimeException ex) {
-            keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+            keyBytes = secret.getBytes(
+                    StandardCharsets.UTF_8);
         }
+
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }
