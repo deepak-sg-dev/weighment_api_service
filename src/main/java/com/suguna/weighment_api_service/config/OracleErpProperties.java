@@ -21,6 +21,12 @@ public class OracleErpProperties {
     private boolean retailOtpValidationEnabled = true;
 
     /**
+     * Temporary UAT/dev expected shop OTP when DTL/message have no code. Clear when
+     * {@link #retailOrderOtpUseDtlColumn} is live in ERP.
+     */
+    private String retailOtpStubCode;
+
+    /**
      * When true, read shop OTP from {@link #retailOrderOtpColumn} on {@code sug_mai_retail_order_dtl}
      * (enable after DDL). When false, only legacy {@code RETAIL_OTP:} in {@code message} is used.
      */
@@ -54,6 +60,16 @@ public class OracleErpProperties {
     private String retailCustomerLongitudeColumn = "ATTRIBUTE10";
 
     /**
+     * Comma-separated columns on {@link #retailCustomerHzAddressLocationAlias} (usually {@code hz_locations})
+     * concatenated for shop address. Suguna AR HZ uses {@code ADDRESS1,ADDRESS2,CITY} on locations, not on
+     * {@code hz_cust_acct_sites_all}.
+     */
+    private String retailCustomerHzAddressColumns = "ADDRESS1,ADDRESS2,CITY";
+
+    /** SQL alias for the location row joined from {@code hz_party_sites} (default {@code hl_ord}). */
+    private String retailCustomerHzAddressLocationAlias = "hl_ord";
+
+    /**
      * When true, {@code POST /weighment/deliveries/{orderId}/start} persists
      * {@link #retailOrderDeliveryStartedDateColumn} on {@code sug_mai_retail_order_dtl}.
      */
@@ -74,6 +90,14 @@ public class OracleErpProperties {
     /** When true (and start column enabled), delivery weighment submit requires a prior start. */
     private boolean retailOrderDeliveryRequireStart = true;
 
+    /**
+     * When true, persist {@link #weighmentLiveReadingAvgColumn} on {@code sug_mai_birds_weighment_dtl}
+     * from {@code liveReadingsAverage} (five readings still in {@code ext_json}).
+     */
+    private boolean weighmentLiveReadingAvgEnabled = false;
+
+    private String weighmentLiveReadingAvgColumn = "LIVE_READING_AVG";
+
     /** Schema for OE / PO tables in the retail order link chain. */
     private String oracleAppsSchema = "APPS";
 
@@ -83,6 +107,21 @@ public class OracleErpProperties {
     private String retailOrderHdrTable = "SUG_MAI_RETAIL_ORDER_HDR";
 
     private String retailOrderDtlTable = "SUG_MAI_RETAIL_ORDER_DTL";
+
+    /**
+     * {@code SUG_RETAIL_TABLES}: lifting → {@code SUG_MAI_RETAIL_ORDER_HDR} → DTL only (no OE/PO/HZ).
+     * {@code OE_PO_CHAIN}: legacy link via {@code oe_order_lines_all.attribute2} and PO requisition.
+     */
+    private String retailOrderLinkMode = "OE_PO_CHAIN";
+
+    /**
+     * HDR column matched to lifting {@code erpindentid}, {@code mobile_order_no}, and {@code ordernumber}
+     * when {@link #retailOrderLinkMode} is {@code SUG_RETAIL_TABLES} ({@code REQ_HEADER_ID} or {@code HEADER_ID}).
+     */
+    private String retailHdrLiftingMatchColumn = "REQ_HEADER_ID";
+
+    /** When false, PO link matches {@code c.orig_sys_document_ref = b.segment1} (ERP reference SQL). */
+    private boolean retailPoRequisitionJoinTrim = false;
 
     public String getApplicationCode() {
         return applicationCode;
@@ -138,6 +177,14 @@ public class OracleErpProperties {
 
     public void setRetailOtpValidationEnabled(boolean retailOtpValidationEnabled) {
         this.retailOtpValidationEnabled = retailOtpValidationEnabled;
+    }
+
+    public String getRetailOtpStubCode() {
+        return retailOtpStubCode;
+    }
+
+    public void setRetailOtpStubCode(String retailOtpStubCode) {
+        this.retailOtpStubCode = retailOtpStubCode;
     }
 
     public boolean isRetailOrderOtpUseDtlColumn() {
@@ -210,6 +257,22 @@ public class OracleErpProperties {
 
     public void setRetailCustomerLongitudeColumn(String retailCustomerLongitudeColumn) {
         this.retailCustomerLongitudeColumn = retailCustomerLongitudeColumn;
+    }
+
+    public String getRetailCustomerHzAddressColumns() {
+        return retailCustomerHzAddressColumns;
+    }
+
+    public void setRetailCustomerHzAddressColumns(String retailCustomerHzAddressColumns) {
+        this.retailCustomerHzAddressColumns = retailCustomerHzAddressColumns;
+    }
+
+    public String getRetailCustomerHzAddressLocationAlias() {
+        return retailCustomerHzAddressLocationAlias;
+    }
+
+    public void setRetailCustomerHzAddressLocationAlias(String retailCustomerHzAddressLocationAlias) {
+        this.retailCustomerHzAddressLocationAlias = retailCustomerHzAddressLocationAlias;
     }
 
     public boolean isRetailOrderDeliveryStartEnabled() {
@@ -290,5 +353,51 @@ public class OracleErpProperties {
 
     public void setRetailOrderDtlTable(String retailOrderDtlTable) {
         this.retailOrderDtlTable = retailOrderDtlTable;
+    }
+
+    public String getRetailOrderLinkMode() {
+        return retailOrderLinkMode;
+    }
+
+    public void setRetailOrderLinkMode(String retailOrderLinkMode) {
+        this.retailOrderLinkMode = retailOrderLinkMode;
+    }
+
+    public String getRetailHdrLiftingMatchColumn() {
+        return retailHdrLiftingMatchColumn;
+    }
+
+    public void setRetailHdrLiftingMatchColumn(String retailHdrLiftingMatchColumn) {
+        this.retailHdrLiftingMatchColumn = retailHdrLiftingMatchColumn;
+    }
+
+    public boolean isRetailOrderSugTablesLink() {
+        return retailOrderLinkMode == null
+                || retailOrderLinkMode.isBlank()
+                || "SUG_RETAIL_TABLES".equalsIgnoreCase(retailOrderLinkMode.trim());
+    }
+
+    public boolean isRetailPoRequisitionJoinTrim() {
+        return retailPoRequisitionJoinTrim;
+    }
+
+    public void setRetailPoRequisitionJoinTrim(boolean retailPoRequisitionJoinTrim) {
+        this.retailPoRequisitionJoinTrim = retailPoRequisitionJoinTrim;
+    }
+
+    public boolean isWeighmentLiveReadingAvgEnabled() {
+        return weighmentLiveReadingAvgEnabled;
+    }
+
+    public void setWeighmentLiveReadingAvgEnabled(boolean weighmentLiveReadingAvgEnabled) {
+        this.weighmentLiveReadingAvgEnabled = weighmentLiveReadingAvgEnabled;
+    }
+
+    public String getWeighmentLiveReadingAvgColumn() {
+        return weighmentLiveReadingAvgColumn;
+    }
+
+    public void setWeighmentLiveReadingAvgColumn(String weighmentLiveReadingAvgColumn) {
+        this.weighmentLiveReadingAvgColumn = weighmentLiveReadingAvgColumn;
     }
 }

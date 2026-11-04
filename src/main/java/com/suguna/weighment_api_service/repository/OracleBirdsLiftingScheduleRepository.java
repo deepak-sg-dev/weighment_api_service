@@ -54,4 +54,16 @@ public class OracleBirdsLiftingScheduleRepository implements ScheduleRepository 
     public void start(String supervisorId, String scheduleId, StartScheduleRequest request) {
         scheduleSqlClient.startSchedule(supervisorId, scheduleId, request);
     }
+
+    @Override
+    public void updateVehicle(
+            String supervisorId,
+            String scheduleId,
+            String vehicleNumber,
+            String driverName,
+            String driverMobile,
+            String updatedBy) {
+        scheduleSqlClient.updateVehicleDetails(
+                supervisorId, scheduleId, vehicleNumber, driverName, driverMobile, updatedBy);
+    }
 }

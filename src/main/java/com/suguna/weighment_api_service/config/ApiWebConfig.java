@@ -11,7 +11,9 @@ import org.springframework.context.annotation.Configuration;
     OracleErpProperties.class,
     FilePathProperties.class,
     PdfFileProperties.class,
-    WeighmentUploadProperties.class
+    WeighmentUploadProperties.class,
+    ApiV2Properties.class,
+    CorsProperties.class
 })
 public class ApiWebConfig {
 }

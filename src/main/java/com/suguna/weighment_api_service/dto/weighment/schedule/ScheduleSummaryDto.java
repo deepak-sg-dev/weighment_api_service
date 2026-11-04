@@ -15,6 +15,7 @@ public class ScheduleSummaryDto {
     private String scaleType;
     private String liftingStatus;
     private String deliveryStatus;
+    private ScheduleBranchDto branch;
     private ScheduleFarmSummaryDto farm;
     private int orderCount;
     private List<ScheduleOrderDto> orders;
@@ -115,6 +116,14 @@ public class ScheduleSummaryDto {
 
     public void setFarm(ScheduleFarmSummaryDto farm) {
         this.farm = farm;
+    }
+
+    public ScheduleBranchDto getBranch() {
+        return branch;
+    }
+
+    public void setBranch(ScheduleBranchDto branch) {
+        this.branch = branch;
     }
 
     public int getOrderCount() {

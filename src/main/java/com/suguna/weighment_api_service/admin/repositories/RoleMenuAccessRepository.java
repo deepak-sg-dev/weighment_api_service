@@ -11,4 +11,6 @@ public interface RoleMenuAccessRepository
     List<RoleMenuAccess> findByRoleIdAndStatus(
             Long roleId,
             String status);
+
+    List<RoleMenuAccess> findByRoleId(Long roleId);
 }

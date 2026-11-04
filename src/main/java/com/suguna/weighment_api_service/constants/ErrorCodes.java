@@ -39,6 +39,8 @@ public final class ErrorCodes {
     public static final String DELIVERY_LOCATION_REQUIRED = "DELIVERY_LOCATION_REQUIRED";
     public static final String INVALID_FARMER_OTP = "INVALID_FARMER_OTP";
     public static final String INVALID_TRADER_OTP = "INVALID_TRADER_OTP";
+    public static final String OTP_ALREADY_VERIFIED = "OTP_ALREADY_VERIFIED";
+    public static final String TOO_MANY_REQUESTS = "TOO_MANY_REQUESTS";
     public static final String BUSINESS_VALIDATION_FAILED = "BUSINESS_VALIDATION_FAILED";
 
     // --- Infrastructure / ERP (500 / 503, often retryable) ---

@@ -5,14 +5,21 @@ import com.suguna.weighment_api_service.config.WeighmentUploadProperties;
 import com.suguna.weighment_api_service.constants.ErrorCode;
 import com.suguna.weighment_api_service.exception.ApiException;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
+import jakarta.annotation.PostConstruct;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -28,6 +35,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class WeighmentImageStorageService {
 
+    private static final Logger log = LoggerFactory.getLogger(WeighmentImageStorageService.class);
+
     private static final Set<String> ALLOWED_CONTENT_TYPES =
             Set.of("image/jpeg", "image/jpg", "image/png");
 
@@ -38,6 +47,18 @@ public class WeighmentImageStorageService {
             FilePathProperties filePathProperties, WeighmentUploadProperties uploadProperties) {
         this.filePathProperties = filePathProperties;
         this.uploadProperties = uploadProperties;
+    }
+
+    @PostConstruct
+    void logStorageRoot() {
+        Path base = resolveBaseDir();
+        boolean writable = Files.isWritable(base) || canCreateSubdirectory(base);
+        log.info("Weighment image storage root={} writable={}", base, writable);
+        if (!writable) {
+            log.warn(
+                    "Weighment image storage root is not writable; uploads will fail until the directory exists "
+                            + "and the JVM user has write permission (see file.upload-dir / file.weighment-verification-dir)");
+        }
     }
 
     public StoredWeighmentImage storeScheduleImage(
@@ -114,21 +135,61 @@ public class WeighmentImageStorageService {
                 .resolve(saleFolder)
                 .resolve(scheduleFolder);
 
+        Path target = directory.resolve(fileName);
+        Path baseDir = resolveBaseDir();
         try {
             Files.createDirectories(directory);
-            Path target = directory.resolve(fileName);
-            photo.transferTo(target);
+            try (InputStream input = photo.getInputStream()) {
+                Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException ex) {
-            throw new ApiException(ErrorCode.INTERNAL_ERROR, "Failed to store image");
+            log.error(
+                    "Failed to store weighment image at {} (baseDir={}): {}",
+                    target,
+                    baseDir,
+                    ex.getMessage(),
+                    ex);
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("storageRoot", baseDir.toString());
+            details.put("targetPath", target.toString());
+            if (ex.getMessage() != null && !ex.getMessage().isBlank()) {
+                details.put("ioMessage", ex.getMessage());
+            }
+            details.put(
+                    "hint",
+                    "On the app server, ensure storageRoot exists and the OS user running the API can create files "
+                            + "under delivery/ and lifting/ (mkdir/chown). Check application log for the full stack trace.");
+            throw new ApiException(ErrorCode.INTERNAL_ERROR, "Failed to store image", details, ex);
         }
 
         String relativeKey = domain.folderName() + "/" + saleFolder + "/" + scheduleFolder + "/" + fileName;
-        return new StoredWeighmentImage(relativeKey, directory.resolve(fileName));
+        Path absolutePath = directory.resolve(fileName);
+        log.info(
+                "Stored weighment image fileKey={} path={} sizeBytes={}",
+                relativeKey,
+                absolutePath,
+                photo.getSize());
+        return new StoredWeighmentImage(relativeKey, absolutePath);
     }
 
     public Path resolveBaseDir() {
         String root = filePathProperties.resolveWeighmentVerificationRoot(uploadProperties.getBaseDir());
         return Path.of(root).toAbsolutePath().normalize();
+    }
+
+    private static boolean canCreateSubdirectory(Path base) {
+        try {
+            if (Files.exists(base) && !Files.isDirectory(base)) {
+                return false;
+            }
+            Path probe = base.resolve(".write-probe-" + System.nanoTime());
+            Files.createDirectories(base);
+            Files.writeString(probe, "ok");
+            Files.deleteIfExists(probe);
+            return true;
+        } catch (IOException ex) {
+            return false;
+        }
     }
 
     public static String saleTypeFolder(String saleType) {

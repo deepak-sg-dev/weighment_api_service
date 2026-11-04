@@ -9,6 +9,7 @@ import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailRes
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListFilter;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListStatusFilter;
+import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleOrderDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleSummaryDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.StartScheduleRequest;
 import com.suguna.weighment_api_service.exception.ApiException;
@@ -33,14 +34,17 @@ public class ScheduleService {
     private final ScheduleRepository scheduleRepository;
     private final ScheduleRetailEnrichmentService retailEnrichmentService;
     private final ScheduleOtpSqlClient scheduleOtpSqlClient;
+    private final ScheduleWorkflowService scheduleWorkflowService;
 
     public ScheduleService(
             ScheduleRepository scheduleRepository,
             ScheduleRetailEnrichmentService retailEnrichmentService,
-            ScheduleOtpSqlClient scheduleOtpSqlClient) {
+            ScheduleOtpSqlClient scheduleOtpSqlClient,
+            ScheduleWorkflowService scheduleWorkflowService) {
         this.scheduleRepository = scheduleRepository;
         this.retailEnrichmentService = retailEnrichmentService;
         this.scheduleOtpSqlClient = scheduleOtpSqlClient;
+        this.scheduleWorkflowService = scheduleWorkflowService;
     }
 
     public ScheduleListResponse getAssignedSchedules(
@@ -65,15 +69,26 @@ public class ScheduleService {
         List<LiftingSchedule> schedules = scheduleRepository.findBySupervisorIdAndStatusIn(
                 supervisorCode, statusFilter.statuses(), listFilter, statusFilter.isIncludeAll());
 
+        List<String> retailScheduleIds = schedules.stream()
+                .filter(retailEnrichmentService::isRetail)
+                .map(LiftingSchedule::getScheduleId)
+                .toList();
+        var retailOrdersBySchedule =
+                retailEnrichmentService.loadListOrdersBatch(supervisorCode, retailScheduleIds);
+
         List<ScheduleSummaryDto> summaries = schedules.stream()
                 .map(schedule -> {
                     String saleType = retailEnrichmentService.resolveSaleType(schedule.getOrderSource());
-                    var orders = retailEnrichmentService.loadListOrders(supervisorCode, schedule);
+                    var orders = "RETAIL".equals(saleType)
+                            ? retailOrdersBySchedule.getOrDefault(
+                                    ScheduleIdSupport.normalize(schedule.getScheduleId()), List.of())
+                            : List.<ScheduleOrderDto>of();
                     String deliveryStatus = resolveScheduleDeliveryStatus(
                             schedule,
                             saleType,
-                            retailEnrichmentService.resolveDeliveryStatus(supervisorCode, schedule));
-                    return ScheduleMapper.toSummary(schedule, saleType, orders, deliveryStatus);
+                            retailEnrichmentService.aggregateDeliveryStatusFromOrders(orders, saleType));
+                    return ScheduleMapper.toSummary(
+                            schedule, supervisor.getSupervisor(), saleType, orders, deliveryStatus);
                 })
                 .toList();
         return ScheduleListResponse.success(summaries);
@@ -90,7 +105,11 @@ public class ScheduleService {
                 schedule, saleType, deliveries, deliveryStatus, supervisor.getSupervisor());
         scheduleOtpSqlClient
                 .findOtpContext(supervisorCode, schedule.getScheduleId())
-                .ifPresent(row -> detail.setOtp(ScheduleMapper.toOtpDetail(row)));
+                .ifPresent(row -> detail.setOtp(ScheduleMapper.toOtpDetail(row, schedule, saleType, scheduleWorkflowService)));
+        if (detail.getOtp() == null && "RETAIL".equals(saleType)) {
+            detail.setOtp(ScheduleMapper.emptyOtpDetail(schedule, saleType, scheduleWorkflowService));
+        }
+        detail.setWorkflow(scheduleWorkflowService.resolveForSchedule(schedule.getScheduleId()));
         return ScheduleDetailResponse.success(detail);
     }
 

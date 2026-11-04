@@ -28,9 +28,9 @@ public class MarkRetailerArrivedRequest {
     @NotNull
     private GpsPoint location;
 
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     @Getter
     @Setter
     public static class GpsPoint {

@@ -15,6 +15,16 @@ public final class RetailRetailerOtpSupport {
             Instant otpExpiresAt,
             String message,
             Instant now) {
+        return resolve(useDtlOtpColumn, dtlOtp, otpExpiresAt, message, now, null);
+    }
+
+    public static RetailRetailerOtpResolution resolve(
+            boolean useDtlOtpColumn,
+            String dtlOtp,
+            Instant otpExpiresAt,
+            String message,
+            Instant now,
+            String stubWhenUnset) {
         if (useDtlOtpColumn && dtlOtp != null && !dtlOtp.isBlank()) {
             Instant checkTime = now == null ? Instant.now() : now;
             if (otpExpiresAt != null && checkTime.isAfter(otpExpiresAt)) {
@@ -22,9 +32,52 @@ public final class RetailRetailerOtpSupport {
             }
             return RetailRetailerOtpResolution.active(dtlOtp.trim());
         }
-        return extractOtpFromMessage(message)
-                .map(RetailRetailerOtpResolution::active)
-                .orElseGet(RetailRetailerOtpResolution::notConfigured);
+        Optional<String> fromMessage = extractOtpFromMessage(message);
+        if (fromMessage.isPresent()) {
+            return RetailRetailerOtpResolution.active(fromMessage.get());
+        }
+        if (stubWhenUnset != null && !stubWhenUnset.isBlank()) {
+            return RetailRetailerOtpResolution.active(stubWhenUnset.trim());
+        }
+        return RetailRetailerOtpResolution.notConfigured();
+    }
+
+    public static String upsertOtpInMessage(String message, String otpCode) {
+        String code = otpCode == null ? "" : otpCode.trim();
+        if (code.isEmpty()) {
+            return message;
+        }
+        String base = message == null ? "" : message;
+        int idx = base.toUpperCase(Locale.ROOT).indexOf("RETAIL_OTP:");
+        if (idx >= 0) {
+            int end = base.indexOf('|', idx);
+            String prefix = base.substring(0, idx);
+            String suffix = end >= 0 ? base.substring(end) : "";
+            return prefix + "RETAIL_OTP:" + code + suffix;
+        }
+        if (base.isBlank()) {
+            return "RETAIL_OTP:" + code;
+        }
+        return base + "|RETAIL_OTP:" + code;
+    }
+
+    public static String markVerifiedInMessage(String message) {
+        String base = message == null ? "" : message;
+        if (isVerifiedInMessage(base)) {
+            return base;
+        }
+        if (base.isBlank()) {
+            return "OTP_VERIFIED:Y";
+        }
+        return base + "|OTP_VERIFIED:Y";
+    }
+
+    public static boolean isVerifiedInMessage(String message) {
+        if (message == null) {
+            return false;
+        }
+        String upper = message.toUpperCase(Locale.ROOT);
+        return upper.contains("OTP_VERIFIED:Y");
     }
 
     static Optional<String> extractOtpFromMessage(String message) {

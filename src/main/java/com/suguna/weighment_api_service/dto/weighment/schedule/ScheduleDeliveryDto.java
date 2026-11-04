@@ -17,6 +17,8 @@ public class ScheduleDeliveryDto {
     /** Per-order delivery: PENDING, IN_PROGRESS, COMPLETED. */
     private String deliveryStatus;
     private String deliveryStartedAt;
+    /** Per-shop OTP (V2 retail); maps to retail {@code order_no} / {@link #deliveryId}. */
+    private PartyOtpDetailDto customerOtp;
 
     public ScheduleDeliveryDto() {}
 
@@ -122,5 +124,13 @@ public class ScheduleDeliveryDto {
 
     public void setDeliveryStartedAt(String deliveryStartedAt) {
         this.deliveryStartedAt = deliveryStartedAt;
+    }
+
+    public PartyOtpDetailDto getCustomerOtp() {
+        return customerOtp;
+    }
+
+    public void setCustomerOtp(PartyOtpDetailDto customerOtp) {
+        this.customerOtp = customerOtp;
     }
 }

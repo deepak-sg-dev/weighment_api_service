@@ -1,32 +1,44 @@
 package com.suguna.weighment_api_service.service;
 
 import com.suguna.weighment_api_service.config.OracleErpProperties;
+import com.suguna.weighment_api_service.constants.WeighmentWorkflowStep;
+import com.suguna.weighment_api_service.domain.RetailScheduleContext;
+import com.suguna.weighment_api_service.dto.weighment.schedule.PartyOtpDetailDto;
+import com.suguna.weighment_api_service.integration.oracle.RetailRetailerOtpResolution;
 import com.suguna.weighment_api_service.domain.LiftingSchedule;
 import com.suguna.weighment_api_service.domain.RetailScheduleContext;
 import com.suguna.weighment_api_service.dto.retail.RetailDeliveryOrderSummaryDto;
 import com.suguna.weighment_api_service.dto.retail.RetailLocationDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDeliveryDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleOrderDto;
-import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.repository.RetailDeliveryRepository;
+import com.suguna.weighment_api_service.util.ScheduleIdSupport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 @Service
 public class ScheduleRetailEnrichmentService {
 
+    private static final Logger log = LoggerFactory.getLogger(ScheduleRetailEnrichmentService.class);
+
     private final RetailDeliveryRepository retailDeliveryRepository;
     private final OracleErpProperties erpProperties;
+    private final ScheduleWorkflowService scheduleWorkflowService;
 
     public ScheduleRetailEnrichmentService(
-            RetailDeliveryRepository retailDeliveryRepository, OracleErpProperties erpProperties) {
+            RetailDeliveryRepository retailDeliveryRepository,
+            OracleErpProperties erpProperties,
+            ScheduleWorkflowService scheduleWorkflowService) {
         this.retailDeliveryRepository = retailDeliveryRepository;
         this.erpProperties = erpProperties;
+        this.scheduleWorkflowService = scheduleWorkflowService;
     }
 
     public boolean isRetail(LiftingSchedule schedule) {
@@ -41,7 +53,41 @@ public class ScheduleRetailEnrichmentService {
     }
 
     public List<ScheduleOrderDto> loadListOrders(String supervisorCode, LiftingSchedule schedule) {
-        return loadRetailRows(supervisorCode, schedule).stream().map(this::toListOrder).toList();
+        return loadRetailRows(supervisorCode, schedule).stream()
+                .map(row -> toListOrder(row.order()))
+                .toList();
+    }
+
+    /** Batch load for {@code GET /weighment/schedules} — one Oracle query for all retail schedule ids. */
+    public Map<String, List<ScheduleOrderDto>> loadListOrdersBatch(String supervisorCode, List<String> scheduleIds) {
+        if (scheduleIds == null || scheduleIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, List<RetailDeliveryOrderSummaryDto>> grouped =
+                retailDeliveryRepository.listDeliveryOrdersGroupedBySchedule(supervisorCode, scheduleIds);
+        Map<String, List<ScheduleOrderDto>> result = new HashMap<>();
+        grouped.forEach((scheduleKey, orders) ->
+                result.put(scheduleKey, orders.stream().map(this::toListOrder).toList()));
+        return result;
+    }
+
+    public String aggregateDeliveryStatusFromOrders(List<ScheduleOrderDto> orders, String saleType) {
+        if (!"RETAIL".equals(saleType)) {
+            return "NOT_APPLICABLE";
+        }
+        if (orders == null || orders.isEmpty()) {
+            return "PENDING";
+        }
+        List<String> statuses = orders.stream()
+                .map(order -> order.getDeliveryStatus() != null ? order.getDeliveryStatus() : "PENDING")
+                .toList();
+        if (statuses.stream().allMatch("COMPLETED"::equals)) {
+            return "COMPLETED";
+        }
+        if (statuses.stream().anyMatch(s -> "IN_PROGRESS".equals(s) || "COMPLETED".equals(s))) {
+            return "IN_PROGRESS";
+        }
+        return "PENDING";
     }
 
     public List<ScheduleDeliveryDto> loadDetailDeliveries(String supervisorCode, LiftingSchedule schedule) {
@@ -82,44 +128,58 @@ public class ScheduleRetailEnrichmentService {
         if (!isRetail(schedule)) {
             return List.of();
         }
-        try {
-            RetailScheduleContext context =
-                    retailDeliveryRepository.loadRetailSchedule(supervisorCode, schedule.getScheduleId());
-            List<RetailDeliveryOrderSummaryDto> orders = retailDeliveryRepository.listDeliveryOrders(context);
-            List<RetailLocationDto> locations = retailDeliveryRepository.listRetailerLocations(context);
-            Map<String, RetailLocationDto> byOrder = locations.stream()
-                    .collect(Collectors.toMap(
-                            RetailLocationDto::getRetailOrderId, loc -> loc, (a, b) -> a));
-            return orders.stream()
-                    .map(order -> new RetailRow(order, byOrder.getOrDefault(order.getRetailOrderId(), emptyLocation(order))))
-                    .toList();
-        } catch (ResourceNotFoundException ex) {
+        RetailScheduleContext context = retailContextFromListRow(schedule, supervisorCode);
+        List<RetailDeliveryOrderSummaryDto> orders = retailDeliveryRepository.listDeliveryOrders(context);
+        if (orders.isEmpty()) {
+            log.warn(
+                    "No retail delivery lines for schedule {} (supervisor {}, source {}). "
+                            + "Check OE_PO_CHAIN link and HZ ship-to for this indent in ERP.",
+                    schedule.getScheduleId(),
+                    supervisorCode,
+                    schedule.getOrderSource());
             return List.of();
         }
+        return orders.stream().map(order -> new RetailRow(order, locationFromSummary(order))).toList();
     }
 
-    private static RetailLocationDto emptyLocation(RetailDeliveryOrderSummaryDto order) {
+    /** Reuses the lifting row already returned by the schedule list (same supervisor + schedule id scope). */
+    private RetailScheduleContext retailContextFromListRow(LiftingSchedule schedule, String supervisorCode) {
+        String liftingSupervisor =
+                schedule.getSupervisorId() != null && !schedule.getSupervisorId().isBlank()
+                        ? schedule.getSupervisorId()
+                        : supervisorCode;
+        return RetailScheduleContext.builder()
+                .scheduleId(schedule.getScheduleId())
+                .supervisorCode(liftingSupervisor)
+                .regionCode(null)
+                .retailBranchCode("")
+                .orderDate(schedule.getScheduledAt())
+                .internalPoNumber(schedule.getSalesOrderNo())
+                .build();
+    }
+
+    private static RetailLocationDto locationFromSummary(RetailDeliveryOrderSummaryDto order) {
         RetailLocationDto location = new RetailLocationDto();
         location.setRetailOrderId(order.getRetailOrderId());
         location.setRetailerId(order.getRetailerId());
         location.setRetailerName(order.getRetailerName());
-        location.setLatitude(0);
-        location.setLongitude(0);
-        location.setAddress(null);
+        location.setAddress(order.getRetailerAddress());
+        location.setLatitude(order.getRetailerLatitude() != null ? order.getRetailerLatitude() : 0D);
+        location.setLongitude(order.getRetailerLongitude() != null ? order.getRetailerLongitude() : 0D);
         return location;
     }
 
-    private ScheduleOrderDto toListOrder(RetailRow row) {
+    private ScheduleOrderDto toListOrder(RetailDeliveryOrderSummaryDto order) {
         ScheduleOrderDto dto = new ScheduleOrderDto();
-        dto.setOrderNo(row.order().getRetailOrderId());
-        dto.setCustomerCode(row.order().getRetailerId());
-        dto.setCustomerName(row.order().getRetailerName());
-        dto.setOrderedQuantityKg(row.order().getOrderedQuantity());
-        dto.setLocation(row.location().getAddress());
-        dto.setLatitude(nullIfZero(row.location().getLatitude()));
-        dto.setLongitude(nullIfZero(row.location().getLongitude()));
-        dto.setDeliveryStatus(row.order().getDeliveryStatus());
-        dto.setDeliveryStartedAt(row.order().getDeliveryStartedAt());
+        dto.setOrderNo(order.getRetailOrderId());
+        dto.setCustomerCode(order.getRetailerId());
+        dto.setCustomerName(order.getRetailerName());
+        dto.setOrderedQuantityKg(order.getOrderedQuantity());
+        dto.setLocation(order.getRetailerAddress());
+        dto.setLatitude(order.getRetailerLatitude());
+        dto.setLongitude(order.getRetailerLongitude());
+        dto.setDeliveryStatus(order.getDeliveryStatus());
+        dto.setDeliveryStartedAt(order.getDeliveryStartedAt());
         return dto;
     }
 
@@ -143,7 +203,27 @@ public class ScheduleRetailEnrichmentService {
         dto.setStatus(deliveryStatus);
         dto.setDeliveryStatus(deliveryStatus);
         dto.setDeliveryStartedAt(order.getDeliveryStartedAt());
+        dto.setCustomerOtp(buildCustomerOtp(schedule, order.getRetailOrderId()));
         return dto;
+    }
+
+    private PartyOtpDetailDto buildCustomerOtp(LiftingSchedule schedule, String deliveryId) {
+        boolean required = scheduleWorkflowService.isDeliveryStepEnabled(
+                schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VALIDATION);
+        PartyOtpDetailDto otp = new PartyOtpDetailDto();
+        otp.setRequired(required && erpProperties.isRetailOtpValidationEnabled());
+        if (!otp.isRequired()) {
+            return otp;
+        }
+        try {
+            RetailScheduleContext context = retailContextFromListRow(schedule, schedule.getSupervisorId());
+            RetailRetailerOtpResolution resolution =
+                    retailDeliveryRepository.resolveRetailerOtp(context, deliveryId);
+            otp.setOtp(resolution.configured() && !resolution.expired() ? resolution.expectedCode() : null);
+        } catch (RuntimeException ex) {
+            otp.setOtp(null);
+        }
+        return otp;
     }
 
     private static Double nullIfZero(double value) {

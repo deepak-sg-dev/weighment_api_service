@@ -111,9 +111,7 @@ public class DeliveryWeighmentSqlClient {
         }
         startArgs.add(newMessage);
         startArgs.add(orderId);
-        if (!erpProperties.isRetailCustomerFromHzSiteEnabled()) {
-            startArgs.add(order.getRetailerId());
-        }
+        startArgs.add(order.getRetailerId());
         for (Object bind : retailDeliverySqlClient.scheduleBindArgs(schedule)) {
             startArgs.add(bind);
         }
@@ -292,23 +290,13 @@ public class DeliveryWeighmentSqlClient {
             String message,
             Double weight,
             Integer quantity) {
-        Object[] args;
-        if (erpProperties.isRetailCustomerFromHzSiteEnabled()) {
-            args = new Object[4 + 7];
-            args[0] = message;
-            args[1] = weight;
-            args[2] = quantity;
-            args[3] = orderId;
-            System.arraycopy(retailDeliverySqlClient.scheduleBindArgs(schedule), 0, args, 4, 7);
-        } else {
-            args = new Object[4 + 2 + 7];
-            args[0] = message;
-            args[1] = weight;
-            args[2] = quantity;
-            args[3] = orderId;
-            args[4] = customerCode;
-            System.arraycopy(retailDeliverySqlClient.scheduleBindArgs(schedule), 0, args, 5, 7);
-        }
+        Object[] args = new Object[5 + 7];
+        args[0] = message;
+        args[1] = weight;
+        args[2] = quantity;
+        args[3] = orderId;
+        args[4] = customerCode;
+        System.arraycopy(retailDeliverySqlClient.scheduleBindArgs(schedule), 0, args, 5, 7);
         int updated = jdbcTemplate.update(updateOrderMessageSql, args);
         if (updated == 0) {
             throw new ResourceNotFoundException("Retail delivery order", orderId);

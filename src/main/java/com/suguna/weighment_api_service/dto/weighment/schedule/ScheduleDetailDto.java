@@ -25,6 +25,7 @@ public class ScheduleDetailDto {
     private ScheduleRulesDto rules;
     private List<ScheduleDeliveryDto> deliveries;
     private ScheduleOtpDetailDto otp;
+    private ScheduleWorkflowDto workflow;
 
     public ScheduleDetailDto() {}
 
@@ -194,5 +195,13 @@ public class ScheduleDetailDto {
 
     public void setOtp(ScheduleOtpDetailDto otp) {
         this.otp = otp;
+    }
+
+    public ScheduleWorkflowDto getWorkflow() {
+        return workflow;
+    }
+
+    public void setWorkflow(ScheduleWorkflowDto workflow) {
+        this.workflow = workflow;
     }
 }

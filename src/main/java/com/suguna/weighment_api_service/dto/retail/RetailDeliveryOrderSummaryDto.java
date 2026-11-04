@@ -25,4 +25,8 @@ public class RetailDeliveryOrderSummaryDto {
     private String deliveryStatus;
     /** ISO-8601 UTC when delivery was started for this order; null if not started. */
     private String deliveryStartedAt;
+    /** Shop address (schedule enrichment / optional on retail list). */
+    private String retailerAddress;
+    private Double retailerLatitude;
+    private Double retailerLongitude;
 }

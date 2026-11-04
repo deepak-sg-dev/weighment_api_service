@@ -1,6 +1,7 @@
 package com.suguna.weighment_api_service.admin.entities;
 
 import jakarta.persistence.*;
+import java.util.Date;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -34,4 +35,7 @@ public class UserMenuAccess {
 
     @Column(name = "STATUS")
     private String status;
+
+    @Column(name = "CREATED_AT")
+    private Date createdAt;
 }

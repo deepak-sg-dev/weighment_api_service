@@ -1,6 +1,11 @@
 package com.suguna.weighment_api_service.service;
 
+import com.suguna.weighment_api_service.config.ApiV2Properties;
 import com.suguna.weighment_api_service.config.OracleErpProperties;
+import com.suguna.weighment_api_service.constants.WeighmentWorkflowStep;
+import com.suguna.weighment_api_service.dto.transaction.SubmitCompletedWeighmentRequest.WeighmentEntry;
+import com.suguna.weighment_api_service.util.LiveReadingValidation;
+import com.suguna.weighment_api_service.util.WeighmentEntryCategory;
 import com.suguna.weighment_api_service.constants.ErrorCode;
 import com.suguna.weighment_api_service.constants.ErrorCodes;
 import com.suguna.weighment_api_service.constants.ScheduleStatus;
@@ -41,18 +46,24 @@ public class DeliveryWeighmentService {
     private final WeighmentImageUploadService imageUploadService;
     private final OracleErpProperties erpProperties;
     private final ScheduleRepository scheduleRepository;
+    private final ScheduleWorkflowService scheduleWorkflowService;
+    private final ApiV2Properties apiV2Properties;
 
     public DeliveryWeighmentService(
             DeliveryWeighmentRepository deliveryWeighmentRepository,
             RetailDeliveryRepository retailDeliveryRepository,
             WeighmentImageUploadService imageUploadService,
             OracleErpProperties erpProperties,
-            ScheduleRepository scheduleRepository) {
+            ScheduleRepository scheduleRepository,
+            ScheduleWorkflowService scheduleWorkflowService,
+            ApiV2Properties apiV2Properties) {
         this.deliveryWeighmentRepository = deliveryWeighmentRepository;
         this.retailDeliveryRepository = retailDeliveryRepository;
         this.imageUploadService = imageUploadService;
         this.erpProperties = erpProperties;
         this.scheduleRepository = scheduleRepository;
+        this.scheduleWorkflowService = scheduleWorkflowService;
+        this.apiV2Properties = apiV2Properties;
     }
 
     @Transactional
@@ -75,15 +86,18 @@ public class DeliveryWeighmentService {
         validateDevice(supervisor, request.getDeviceId());
         validateSupervisor(supervisor, request.getSupervisorId());
         validateRetailSaleType(request);
-        validateShopValidation(request);
+        String normalizedScheduleId = ScheduleIdSupport.normalize(request.getScheduleId());
+        validateWeighmentEntries(normalizedScheduleId, request.getWeighmentEntries());
+        validateShopValidation(normalizedScheduleId, request);
         validatePayment(request.getPayment());
 
         String supervisorCode = supervisor.getSupervisor().getCode();
-        String normalizedScheduleId = ScheduleIdSupport.normalize(request.getScheduleId());
         ensureLiftingCompleted(supervisorCode, normalizedScheduleId);
 
         RetailScheduleContext schedule = loadSchedule(supervisor, request.getScheduleId());
-        validateRetailerOtp(schedule, request.getOrderId(), extractOtp(request));
+        if (scheduleWorkflowService.isDeliveryStepEnabled(normalizedScheduleId, WeighmentWorkflowStep.OTP_VALIDATION)) {
+            validateRetailerOtp(schedule, request.getOrderId(), extractOtp(request));
+        }
 
         return deliveryWeighmentRepository.submitWeighment(schedule, request);
     }
@@ -206,17 +220,34 @@ public class DeliveryWeighmentService {
         }
     }
 
-    private void validateShopValidation(SubmitDeliveryWeighmentRequest request) {
+    private void validateWeighmentEntries(String scheduleId, List<WeighmentEntry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return;
+        }
+        for (WeighmentEntry entry : entries) {
+            WeighmentEntryCategory.validateIfPresent(entry.getSequence(), entry.getCategory());
+            if (apiV2Properties.isLiveReadingsRequired()
+                    || entry.getLiveReadings() != null
+                    || entry.getLiveReadingsAverage() != null) {
+                LiveReadingValidation.validateEntry(
+                        entry.getSequence(), entry.getLiveReadings(), entry.getLiveReadingsAverage());
+            }
+        }
+    }
+
+    private void validateShopValidation(String scheduleId, SubmitDeliveryWeighmentRequest request) {
         var shop = request.getShopValidation();
         if (shop == null) {
             throw new BusinessValidationException(
                     ErrorCodes.VALIDATION_PENDING, "Shop validation evidence is required");
         }
-        if (!Boolean.TRUE.equals(shop.getVerified())) {
+        if (scheduleWorkflowService.isDeliveryStepEnabled(scheduleId, WeighmentWorkflowStep.OTP_VALIDATION)
+                && !Boolean.TRUE.equals(shop.getVerified())) {
             throw new BusinessValidationException(
                     ErrorCodes.VALIDATION_PENDING, "Shop OTP/QR verification must be completed before submission");
         }
-        if (!Boolean.TRUE.equals(shop.getWithinGeofence())) {
+        if (scheduleWorkflowService.isDeliveryStepEnabled(scheduleId, WeighmentWorkflowStep.GEOFENCING)
+                && !Boolean.TRUE.equals(shop.getWithinGeofence())) {
             throw new BusinessValidationException(
                     ErrorCodes.BUSINESS_VALIDATION_FAILED, "Geofence validation failed");
         }

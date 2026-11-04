@@ -37,4 +37,17 @@ class RetailRetailerOtpSupportTest {
         var resolution = RetailRetailerOtpSupport.resolve(false, null, null, "no otp here", NOW);
         assertFalse(resolution.configured());
     }
+
+    @Test
+    void stubUsedWhenNoDtlOrMessageOtp() {
+        var resolution = RetailRetailerOtpSupport.resolve(false, null, null, "no otp here", NOW, "1234");
+        assertTrue(resolution.configured());
+        assertEquals("1234", resolution.expectedCode());
+    }
+
+    @Test
+    void stubIgnoredWhenDtlOtpPresent() {
+        var resolution = RetailRetailerOtpSupport.resolve(true, "5678", null, null, NOW, "1234");
+        assertEquals("5678", resolution.expectedCode());
+    }
 }

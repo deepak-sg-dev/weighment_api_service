@@ -4,6 +4,7 @@ public class ScheduleOtpDetailDto {
 
     private PartyOtpDetailDto farmer;
     private PartyOtpDetailDto trader;
+    private PartyOtpDetailDto customer;
 
     public ScheduleOtpDetailDto() {}
 
@@ -21,5 +22,13 @@ public class ScheduleOtpDetailDto {
 
     public void setTrader(PartyOtpDetailDto trader) {
         this.trader = trader;
+    }
+
+    public PartyOtpDetailDto getCustomer() {
+        return customer;
+    }
+
+    public void setCustomer(PartyOtpDetailDto customer) {
+        this.customer = customer;
     }
 }

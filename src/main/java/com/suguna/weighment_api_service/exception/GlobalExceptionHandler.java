@@ -16,6 +16,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
@@ -42,7 +43,7 @@ public class GlobalExceptionHandler {
             BusinessValidationException ex,
             WebRequest request) {
         return buildErrorResponse(
-                HttpStatus.UNPROCESSABLE_ENTITY,
+                HttpStatus.valueOf(422),
                 ex.getErrorCode(),
                 ex.getMessage(),
                 ex.getDetails(),
@@ -168,6 +169,17 @@ public class GlobalExceptionHandler {
                 request);
     }
 
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public ResponseEntity<Void> handleClientDisconnect(AsyncRequestNotUsableException ex) {
+        log.warn(
+                "Client closed the connection before the response finished (app timeout, navigation away, or proxy limit). "
+                        + "Common on slow GET /weighment/schedules — use lookbackDays, deploy retail batch list SQL, or raise client read timeout.");
+        if (log.isDebugEnabled()) {
+            log.debug("Client disconnect detail", ex);
+        }
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<CommonApiResponse<Void>> handleUnexpected(Exception ex, WebRequest request) {
         log.error("Unhandled exception", ex);
@@ -217,4 +229,5 @@ public class GlobalExceptionHandler {
         }
         return description;
     }
+
 }

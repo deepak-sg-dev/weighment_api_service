@@ -11,12 +11,15 @@ import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDeliveryD
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleFarmSummaryDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleOrderDto;
+import com.suguna.weighment_api_service.constants.WeighmentWorkflowStep;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleOtpDetailDto;
+import com.suguna.weighment_api_service.service.ScheduleWorkflowService;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleRulesDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.PartyOtpDetailDto;
 import com.suguna.weighment_api_service.integration.oracle.ScheduleOtpSqlClient;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleSummaryDto;
 import com.suguna.weighment_api_service.util.BirdTypeNormalizer;
+import com.suguna.weighment_api_service.util.BranchNameSupport;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleSupervisorDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleVehicleDto;
 import java.time.Instant;
@@ -35,15 +38,13 @@ public final class ScheduleMapper {
 
     public static ScheduleSummaryDto toSummary(
             LiftingSchedule schedule,
+            SupervisorProfile supervisor,
             String saleType,
             List<ScheduleOrderDto> orders,
             String deliveryStatus) {
         List<ScheduleOrderDto> safeOrders = saleType.equals("RETAIL") ? orders : List.of();
 
-        ScheduleFarmSummaryDto farm = new ScheduleFarmSummaryDto();
-        farm.setId(schedule.getFarmId());
-        farm.setName(schedule.getFarmName());
-        farm.setLocation(schedule.getFarmLocation());
+        ScheduleFarmSummaryDto farm = toFarmSummary(schedule);
 
         ScheduleSummaryDto summary = new ScheduleSummaryDto();
         summary.setScheduleId(schedule.getScheduleId());
@@ -57,6 +58,7 @@ public final class ScheduleMapper {
         summary.setScaleType(schedule.getScaleType());
         summary.setLiftingStatus(resolveLiftingStatus(schedule));
         summary.setDeliveryStatus(deliveryStatus);
+        summary.setBranch(toBranch(schedule, supervisor));
         summary.setFarm(farm);
         summary.setOrderCount(safeOrders.size());
         summary.setOrders(safeOrders);
@@ -71,13 +73,12 @@ public final class ScheduleMapper {
             SupervisorProfile supervisor) {
         List<ScheduleDeliveryDto> safeDeliveries = saleType.equals("RETAIL") ? deliveries : List.of();
 
-        ScheduleBranchDto branch = new ScheduleBranchDto();
-        branch.setId(resolveBranchId(schedule, supervisor));
-        branch.setCode(schedule.getBranchCode());
-        branch.setName(supervisor.getBranchName());
+        ScheduleBranchDto branch = toBranch(schedule, supervisor);
 
         ScheduleVehicleDto vehicle = new ScheduleVehicleDto();
         vehicle.setNumber(schedule.getVehicleNumber());
+        vehicle.setDriverName(schedule.getDriverName());
+        vehicle.setDriverMobile(schedule.getDriverMobile());
 
         ScheduleSupervisorDto scheduleSupervisor = new ScheduleSupervisorDto();
         scheduleSupervisor.setCode(supervisor.getCode());
@@ -132,20 +133,48 @@ public final class ScheduleMapper {
         return detail;
     }
 
-    public static ScheduleOtpDetailDto toOtpDetail(ScheduleOtpSqlClient.ScheduleOtpRow row) {
-        PartyOtpDetailDto farmer = new PartyOtpDetailDto();
-        farmer.setRequired(row.isFarmerOtpRequired());
+    public static ScheduleOtpDetailDto toOtpDetail(
+            ScheduleOtpSqlClient.ScheduleOtpRow row,
+            LiftingSchedule schedule,
+            String saleType,
+            ScheduleWorkflowService workflowService) {
+        ScheduleOtpDetailDto otp = emptyOtpDetail(schedule, saleType, workflowService);
+        PartyOtpDetailDto farmer = otp.getFarmer();
+        farmer.setRequired(
+                workflowService.isLiftingStepEnabled(schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VERIFICATION)
+                        && row.isFarmerOtpRequired());
         farmer.setMobile(row.farmerMobile());
         farmer.setOtp(row.farmerOtpValue());
 
-        PartyOtpDetailDto trader = new PartyOtpDetailDto();
-        trader.setRequired(row.isTraderOtpRequired());
+        PartyOtpDetailDto trader = otp.getTrader();
+        trader.setRequired(
+                workflowService.isLiftingStepEnabled(schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VERIFICATION)
+                        && row.isTraderOtpRequired());
         trader.setMobile(null);
         trader.setOtp(row.traderOtpValue());
+        return otp;
+    }
+
+    public static ScheduleOtpDetailDto emptyOtpDetail(
+            LiftingSchedule schedule, String saleType, ScheduleWorkflowService workflowService) {
+        PartyOtpDetailDto farmer = new PartyOtpDetailDto();
+        farmer.setRequired(
+                workflowService.isLiftingStepEnabled(schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VERIFICATION)
+                        && false);
+
+        PartyOtpDetailDto trader = new PartyOtpDetailDto();
+        trader.setRequired(false);
+
+        PartyOtpDetailDto customer = new PartyOtpDetailDto();
+        customer.setRequired(
+                "RETAIL".equals(saleType)
+                        && workflowService.isDeliveryStepEnabled(
+                                schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VALIDATION));
 
         ScheduleOtpDetailDto otp = new ScheduleOtpDetailDto();
         otp.setFarmer(farmer);
         otp.setTrader(trader);
+        otp.setCustomer(customer);
         return otp;
     }
 
@@ -187,6 +216,29 @@ public final class ScheduleMapper {
         return instant.atZone(INDIA).format(SCHEDULED_AT);
     }
 
+    static ScheduleFarmSummaryDto toFarmSummary(LiftingSchedule schedule) {
+        ScheduleFarmSummaryDto farm = new ScheduleFarmSummaryDto();
+        farm.setId(schedule.getFarmId());
+        farm.setName(schedule.getFarmName());
+        farm.setLocation(schedule.getFarmLocation());
+        farm.setLatitude(nullIfZero(schedule.getFarmLatitude()));
+        farm.setLongitude(nullIfZero(schedule.getFarmLongitude()));
+        if (schedule.getGeofenceRadiusMeters() > 0) {
+            farm.setGeofenceRadiusMeters(schedule.getGeofenceRadiusMeters());
+        }
+        return farm;
+    }
+
+    static ScheduleBranchDto toBranch(LiftingSchedule schedule, SupervisorProfile supervisor) {
+        String fullName = supervisor.getBranchName();
+        ScheduleBranchDto branch = new ScheduleBranchDto();
+        branch.setId(resolveBranchId(schedule, supervisor));
+        branch.setCode(schedule.getBranchCode());
+        branch.setName(fullName);
+        branch.setShortName(BranchNameSupport.deriveShortName(fullName));
+        return branch;
+    }
+
     static String resolveBranchId(LiftingSchedule schedule, SupervisorProfile supervisor) {
         if (schedule.getBranchId() != null && !schedule.getBranchId().isBlank()) {
             return schedule.getBranchId().trim();
@@ -211,5 +263,9 @@ public final class ScheduleMapper {
             return null;
         }
         return String.valueOf(orderNumber);
+    }
+
+    private static Double nullIfZero(double value) {
+        return value == 0D ? null : value;
     }
 }

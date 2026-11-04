@@ -38,7 +38,7 @@ public class LiftingScheduleSqlClient {
                    o.delivery_status
             """;
 
-    /** List: no GPS view join; status and date filters applied in SQL. */
+    /** List: includes farm GPS (same view as detail); status and date filters applied in SQL. */
     private static final String LIST_SCHEDULES_SELECT =
             """
             SELECT TO_CHAR(o.erpindentid) AS schedule_id,
@@ -61,9 +61,15 @@ public class LiftingScheduleSqlClient {
             """
             + MOBILE_STATUS_COLUMNS
             + """
+                   ,
+                   NVL(v.farm_mst_latitude, 0) AS farm_latitude,
+                   NVL(v.farm_mst_longitude, 0) AS farm_longitude
               FROM sug_mai_birds_lifting_order o
               LEFT JOIN sug_farm_mst_header f
                 ON TRIM(f.farm_code) = TRIM(o.farmercode)
+              LEFT JOIN sug_farm_lifting_gps_v v
+                ON v.farm_code = o.farmercode
+               AND v.branch_code = o.branchcode
             """;
 
     /** Detail: includes GPS coordinates and full party/product fields. */
@@ -84,6 +90,8 @@ public class LiftingScheduleSqlClient {
                    o.ordernumber AS sales_order_no,
                    NVL(o.body_wt, 0) AS body_wt,
                    o.vehicleno AS vehicle_no,
+                   o.driver AS driver_name,
+                   o.message AS lifting_message,
                    NVL(f.farm_name_village, o.farmername) AS farm_location,
                    o.source AS order_source,
             """
@@ -293,6 +301,57 @@ public class LiftingScheduleSqlClient {
                 MARK_DOWNLOADED_SQL,
                 Timestamp.from(request.getDownloadedAt()),
                 trimUpdatedBy(supervisorCode),
+                normalizedScheduleId,
+                normalizedScheduleId,
+                supervisorCode,
+                supervisorCode);
+        if (updated == 0) {
+            throw new ResourceNotFoundException("Schedule", scheduleId);
+        }
+    }
+
+    public void updateVehicleDetails(
+            String supervisorCode,
+            String scheduleId,
+            String vehicleNumber,
+            String driverName,
+            String driverMobile,
+            String updatedBy) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        String existingMessage =
+                jdbcTemplate.query(
+                                """
+                                SELECT o.message FROM sug_mai_birds_lifting_order o WHERE """
+                                        + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+                                        + """
+                                 AND """
+                                        + ORDER_SUPERVISOR_MATCH,
+                                (rs, rowNum) -> rs.getString(1),
+                                normalizedScheduleId,
+                                normalizedScheduleId,
+                                supervisorCode,
+                                supervisorCode)
+                        .stream()
+                        .findFirst()
+                        .orElse(null);
+        String message = LiftingDriverMessageSupport.upsertDriverMobile(existingMessage, driverMobile);
+        int updated = jdbcTemplate.update(
+                """
+                UPDATE sug_mai_birds_lifting_order o
+                   SET o.vehicleno = ?,
+                       o.driver = ?,
+                       o.message = ?,
+                       o.updated_at = SYSDATE,
+                       o.updated_by = ?
+                 WHERE """
+                        + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+                        + """
+                   AND """
+                        + ORDER_SUPERVISOR_MATCH,
+                vehicleNumber,
+                driverName,
+                message,
+                trimUpdatedBy(updatedBy),
                 normalizedScheduleId,
                 normalizedScheduleId,
                 supervisorCode,
@@ -542,6 +601,10 @@ public class LiftingScheduleSqlClient {
         schedule.setBranchId(rs.getString("branch_id"));
         schedule.setSalesOrderNo(readLongObject(rs, "sales_order_no"));
         schedule.setVehicleNumber(rs.getString("vehicle_no"));
+        if (detail) {
+            schedule.setDriverName(rs.getString("driver_name"));
+            schedule.setDriverMobile(LiftingDriverMessageSupport.readDriverMobile(rs.getString("lifting_message")));
+        }
         schedule.setFarmLocation(rs.getString("farm_location"));
         schedule.setFarmId(rs.getString("farm_id"));
         schedule.setFarmName(rs.getString("farm_name"));
@@ -558,10 +621,10 @@ public class LiftingScheduleSqlClient {
         schedule.setCaptureMode("AUTO");
         schedule.setCompletionPhotoRequired(true);
         schedule.setGeofenceRadiusMeters(erpProperties.getDefaultGeofenceRadiusMeters());
+        schedule.setFarmLatitude(rs.getDouble("farm_latitude"));
+        schedule.setFarmLongitude(rs.getDouble("farm_longitude"));
 
         if (detail) {
-            schedule.setFarmLatitude(rs.getDouble("farm_latitude"));
-            schedule.setFarmLongitude(rs.getDouble("farm_longitude"));
             schedule.setFarmerId(rs.getString("farmer_id"));
             schedule.setFarmerName(rs.getString("farmer_name"));
             schedule.setFarmerMobile(rs.getString("farmer_mobile"));
@@ -573,8 +636,6 @@ public class LiftingScheduleSqlClient {
             schedule.setToleranceMin(rs.getDouble("tolerance_min"));
             schedule.setToleranceMax(rs.getDouble("tolerance_max"));
         } else {
-            schedule.setFarmLatitude(0);
-            schedule.setFarmLongitude(0);
             schedule.setToleranceMin(0);
             schedule.setToleranceMax(0);
         }

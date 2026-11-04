@@ -8,7 +8,7 @@ import com.suguna.weighment_api_service.admin.dtos.responses.MenuTreeDTO;
 import com.suguna.weighment_api_service.admin.entities.PosMenu;
 import com.suguna.weighment_api_service.admin.entities.RoleMenuAccess;
 import com.suguna.weighment_api_service.admin.mappers.MenuMapper;
-import com.suguna.weighment_api_service.admin.repositories.MenuRepository;
+import com.suguna.weighment_api_service.admin.repositories.PosMenuRepository;
 import com.suguna.weighment_api_service.admin.repositories.RoleMenuAccessRepository;
 import com.suguna.weighment_api_service.admin.services.MenuService;
 import com.suguna.weighment_api_service.admin.utils.UserUtils;
@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 public class MenuServiceImpl implements MenuService {
 
     @Autowired
-    private MenuRepository repository;
+    private PosMenuRepository repository;
 
     @Autowired
     private MenuMapper mapper;

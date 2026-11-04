@@ -1,6 +1,7 @@
 package com.suguna.weighment_api_service.integration.oracle;
 
 import com.suguna.weighment_api_service.config.OracleErpProperties;
+import com.suguna.weighment_api_service.dto.weighment.otp.PartyType;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -52,6 +53,40 @@ public class ScheduleOtpSqlClient {
                         rs.getString("customercode")),
                 args.toArray());
         return rows.stream().findFirst();
+    }
+
+    public void replacePartyOtp(String supervisorCode, String scheduleId, PartyType partyType, String newOtp) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        List<String> supervisorKeys = LiftingScheduleSqlClient.supervisorBindKeys(supervisorCode);
+        String column =
+                switch (partyType) {
+                    case FARMER -> "farmer_otp";
+                    case TRADER -> "trader_otp";
+                    case CUSTOMER -> throw new IllegalArgumentException("CUSTOMER OTP is on retail order lines");
+                };
+        String sql =
+                """
+                UPDATE sug_mai_birds_lifting_order o
+                   SET """
+                        + column
+                        + """
+                 = ?,
+                       o.updated_at = SYSDATE,
+                       o.updated_by = ?
+                 WHERE """
+                        + supervisorEqualityPredicate(supervisorKeys)
+                        + """
+                   AND NVL(o.application, ?) = ?
+                   AND """
+                        + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH;
+        List<Object> args = new ArrayList<>(supervisorKeys);
+        args.add(newOtp);
+        args.add(supervisorCode);
+        args.add(erpProperties.getApplicationCode());
+        args.add(erpProperties.getApplicationCode());
+        args.add(normalizedScheduleId);
+        args.add(normalizedScheduleId);
+        jdbcTemplate.update(sql, args.toArray());
     }
 
     private static String supervisorEqualityPredicate(List<String> keys) {

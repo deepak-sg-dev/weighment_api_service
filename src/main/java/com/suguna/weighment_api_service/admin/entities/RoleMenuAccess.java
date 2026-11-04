@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.util.Date;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -37,4 +38,10 @@ public class RoleMenuAccess {
 
     @Column(name = "STATUS")
     private String status;
+
+    @Column(name = "CREATED_AT")
+    private Date createdAt;
+
+    @Column(name = "UPDATED_AT")
+    private Date updatedAt;
 }

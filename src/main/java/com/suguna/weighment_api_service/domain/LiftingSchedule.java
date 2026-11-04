@@ -16,6 +16,8 @@ public class LiftingSchedule {
     private String branchId;
     private Long salesOrderNo;
     private String vehicleNumber;
+    private String driverName;
+    private String driverMobile;
     private String farmLocation;
     private String farmId;
     private String farmName;
@@ -125,6 +127,22 @@ public class LiftingSchedule {
 
     public void setVehicleNumber(String vehicleNumber) {
         this.vehicleNumber = vehicleNumber;
+    }
+
+    public String getDriverName() {
+        return driverName;
+    }
+
+    public void setDriverName(String driverName) {
+        this.driverName = driverName;
+    }
+
+    public String getDriverMobile() {
+        return driverMobile;
+    }
+
+    public void setDriverMobile(String driverMobile) {
+        this.driverMobile = driverMobile;
     }
 
     public String getFarmLocation() {

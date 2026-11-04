@@ -5,6 +5,8 @@ public class ScheduleBranchDto {
     private String id;
     private String code;
     private String name;
+    /** Display label derived from {@link #name} (e.g. {@code INDAPUR} from {@code M47:INDAPUR BROILER BRANCH-MH}). */
+    private String shortName;
 
     public ScheduleBranchDto() {}
 
@@ -30,5 +32,13 @@ public class ScheduleBranchDto {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getShortName() {
+        return shortName;
+    }
+
+    public void setShortName(String shortName) {
+        this.shortName = shortName;
     }
 }

@@ -317,6 +317,8 @@ public class SubmitCompletedWeighmentRequest {
 
     public static class VehicleInfo {
         private String registrationNumber;
+        private String driverName;
+        private String driverMobile;
 
         public String getRegistrationNumber() {
             return registrationNumber;
@@ -325,10 +327,27 @@ public class SubmitCompletedWeighmentRequest {
         public void setRegistrationNumber(String registrationNumber) {
             this.registrationNumber = registrationNumber;
         }
+
+        public String getDriverName() {
+            return driverName;
+        }
+
+        public void setDriverName(String driverName) {
+            this.driverName = driverName;
+        }
+
+        public String getDriverMobile() {
+            return driverMobile;
+        }
+
+        public void setDriverMobile(String driverMobile) {
+            this.driverMobile = driverMobile;
+        }
     }
 
     public static class WeighmentEntry {
         private Integer sequence;
+        /** NORMAL, LAME, REPLACEMENT, or EMPTY (empty cage / tare weighment). */
         private String category;
         private Integer birdsApplied;
         private Double gross;
@@ -338,6 +357,8 @@ public class SubmitCompletedWeighmentRequest {
         private String status;
         private Instant startTime;
         private Instant endTime;
+        private java.util.List<Double> liveReadings;
+        private Double liveReadingsAverage;
 
         public Integer getSequence() {
             return sequence;
@@ -417,6 +438,22 @@ public class SubmitCompletedWeighmentRequest {
 
         public void setEndTime(Instant endTime) {
             this.endTime = endTime;
+        }
+
+        public java.util.List<Double> getLiveReadings() {
+            return liveReadings;
+        }
+
+        public void setLiveReadings(java.util.List<Double> liveReadings) {
+            this.liveReadings = liveReadings;
+        }
+
+        public Double getLiveReadingsAverage() {
+            return liveReadingsAverage;
+        }
+
+        public void setLiveReadingsAverage(Double liveReadingsAverage) {
+            this.liveReadingsAverage = liveReadingsAverage;
         }
     }
 

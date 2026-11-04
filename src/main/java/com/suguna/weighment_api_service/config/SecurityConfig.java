@@ -68,7 +68,8 @@ public class SecurityConfig {
             AdminJwtAuthenticationFilter adminJwtAuthenticationFilter)
             throws Exception {
 
-        http.csrf(csrf -> csrf.disable())
+        http.cors(cors -> {})
+                .csrf(csrf -> csrf.disable())
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
 

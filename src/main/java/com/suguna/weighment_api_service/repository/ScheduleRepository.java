@@ -28,4 +28,12 @@ public interface ScheduleRepository {
     void markDownloaded(String supervisorId, String scheduleId, MarkScheduleDownloadedRequest request);
 
     void start(String supervisorId, String scheduleId, StartScheduleRequest request);
+
+    void updateVehicle(
+            String supervisorId,
+            String scheduleId,
+            String vehicleNumber,
+            String driverName,
+            String driverMobile,
+            String updatedBy);
 }

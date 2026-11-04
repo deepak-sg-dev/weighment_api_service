@@ -169,6 +169,9 @@ public class WeighmentSubmissionMapper {
         if (line.eventAt() != null) {
             entry.setEndTime(line.eventAt().toInstant());
         }
+        if (line.liveReadingAvg() != null) {
+            entry.setLiveReadingsAverage(line.liveReadingAvg());
+        }
         JsonNode ext = parseExt(line.extJson());
         if (ext != null) {
             if (ext.hasNonNull("status")) {
@@ -179,6 +182,14 @@ public class WeighmentSubmissionMapper {
             }
             if (ext.has("endTime") && !ext.get("endTime").isNull()) {
                 entry.setEndTime(Instant.parse(ext.get("endTime").asText()));
+            }
+            if (entry.getLiveReadingsAverage() == null && ext.has("liveReadingsAverage")) {
+                entry.setLiveReadingsAverage(ext.get("liveReadingsAverage").asDouble());
+            }
+            if (ext.has("liveReadings") && ext.get("liveReadings").isArray()) {
+                List<Double> readings = new ArrayList<>();
+                ext.get("liveReadings").forEach(node -> readings.add(node.asDouble()));
+                entry.setLiveReadings(readings);
             }
         }
         return entry;

@@ -13,6 +13,15 @@ final class WeighmentDtlHistoryJson {
 
     private WeighmentDtlHistoryJson() {}
 
+    private static void appendLiveReadings(ObjectNode root, WeighmentEntry entry) {
+        if (entry.getLiveReadings() != null) {
+            root.set("liveReadings", MAPPER.valueToTree(entry.getLiveReadings()));
+        }
+        if (entry.getLiveReadingsAverage() != null) {
+            root.put("liveReadingsAverage", entry.getLiveReadingsAverage());
+        }
+    }
+
     static String entryJson(
             SubmitCompletedWeighmentRequest request, WeighmentEntry entry, boolean includeHeaderPayload) {
         try {
@@ -47,6 +56,7 @@ final class WeighmentDtlHistoryJson {
             if (entry.getEndTime() != null) {
                 root.put("endTime", entry.getEndTime().toString());
             }
+            appendLiveReadings(root, entry);
             if (includeHeaderPayload) {
                 root.put("deviceId", request.getDeviceId());
                 root.put("supervisorId", request.getSupervisorId());
@@ -102,6 +112,7 @@ final class WeighmentDtlHistoryJson {
             if (entry.getEndTime() != null) {
                 root.put("endTime", entry.getEndTime().toString());
             }
+            appendLiveReadings(root, entry);
             if (includeHeaderPayload) {
                 root.put("deviceId", request.getDeviceId());
                 root.put("supervisorId", request.getSupervisorId());
