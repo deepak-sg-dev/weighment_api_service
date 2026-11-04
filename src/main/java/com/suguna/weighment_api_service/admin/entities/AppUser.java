@@ -3,6 +3,7 @@ package com.suguna.weighment_api_service.admin.entities;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 
 import java.util.Date;
 
@@ -10,22 +11,29 @@ import java.util.Date;
 @Table(name = "SUG_MAI_USER", schema = "SUG")
 @Getter
 @Setter
+@ToString
 public class AppUser {
 
     @Id
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "user_seq")
-    @SequenceGenerator(name = "user_seq", sequenceName = "SUG_MAI_USER_S", allocationSize = 1)
+    @SequenceGenerator(
+            name = "user_seq",
+            sequenceName = "SUG_MAI_USER_S",
+            allocationSize = 1)
     @Column(name = "ID")
     private Long id;
 
     @Column(name = "USER_ID")
-    private Long userId; // business user id
+    private Long userId;
 
     @Column(name = "USER_NAME")
     private String userName;
 
     @Column(name = "PASS_WORD")
     private String password;
+
+    @Column(name = "BRANCH_ID")
+    private String  branchId;
 
     @Column(name = "NAME")
     private String name;
@@ -40,13 +48,13 @@ public class AppUser {
     private Long orgId;
 
     @Column(name = "USER_TYPE")
-    private String userType; // CUSTOMER / EMPLOYEE
+    private String userType;
 
     @Column(name = "APPLICATION")
     private String application;
 
     @Column(name = "STATUS")
-    private String status; // A, I, B
+    private String status;
 
     @Column(name = "END_DATE")
     private Date endDate;
@@ -73,13 +81,11 @@ public class AppUser {
     private Integer passwordExpiryDays;
 
     @Column(name = "FIREBASE_TOKEN")
-    private String firebaseToken;  // ✅ FCM Device
-
+    private String firebaseToken;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ROLE_ID", insertable = false, updatable = false)
     private Role role;
-
 
     @Column(name = "ROLE_ID")
     private Long roleId;
