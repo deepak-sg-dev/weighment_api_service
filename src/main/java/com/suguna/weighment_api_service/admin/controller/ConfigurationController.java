@@ -1,7 +1,12 @@
 package com.suguna.weighment_api_service.admin.controller;
 
 import com.suguna.weighment_api_service.admin.dtos.requests.UpdateBranchConfigurationRequestDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.*;
+import com.suguna.weighment_api_service.admin.dtos.responses.BranchConfigurationOptionsResponseDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.BranchConfigurationResponseDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.CompanyConfigurationOptionsResponseDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.CompanyConfigurationResponseDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.EffectiveBranchConfigurationResponseDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.UpdateResponseDTO;
 import com.suguna.weighment_api_service.admin.services.ConfigurationService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,13 +15,20 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/admin/configuration")
 @Tag(
-        name = "Branch Configuration",
-        description = "Branch configuration and effective configuration APIs"
+        name = "Company & Branch Configuration",
+        description = "Company and branch configuration APIs"
 )
 public class ConfigurationController {
 
     @Autowired
     private ConfigurationService service;
+
+    @GetMapping("/company")
+    public CompanyConfigurationResponseDTO
+    getCompanyConfiguration() {
+
+        return service.getCompanyConfiguration();
+    }
 
     @GetMapping("/company/options")
     public CompanyConfigurationOptionsResponseDTO
