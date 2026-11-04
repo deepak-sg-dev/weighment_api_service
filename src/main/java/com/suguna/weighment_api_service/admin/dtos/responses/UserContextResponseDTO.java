@@ -1,16 +1,16 @@
 package com.suguna.weighment_api_service.admin.dtos.responses;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 import java.util.List;
 
-@Getter
-@Setter
+@Data
 public class UserContextResponseDTO {
 
     private Long id;
     private String name;
+
+
     private RoleDTO role;
     private List<BranchAccessDTO> branchAccess;
     private List<String> permissions;
