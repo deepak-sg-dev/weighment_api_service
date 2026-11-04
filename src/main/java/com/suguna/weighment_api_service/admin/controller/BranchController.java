@@ -13,8 +13,8 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/admin/branches")
 @Tag(
-        name = "Admin Authentication",
-        description = "Admin authentication and user management APIs"
+        name = "Branch Management",
+        description = "Branch management APIs"
 )
 public class BranchController {
 

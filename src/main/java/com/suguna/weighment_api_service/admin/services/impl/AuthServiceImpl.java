@@ -69,19 +69,83 @@ public class AuthServiceImpl implements AuthService {
                 .orElseThrow(() ->
                         new RuntimeException("Role not found"));
 
+        List<RoleMenuAccess> accesses =
+                roleMenuAccessRepository
+                        .findByRoleIdAndStatus(
+                                role.getId(),
+                                "A");
+
+        List<String> permissions =
+                new ArrayList<>();
+
+        for (RoleMenuAccess access : accesses) {
+
+            Menu menu =
+                    menuRepository
+                            .findById(
+                                    access.getMenuId())
+                            .orElse(null);
+
+            if (menu == null) {
+                continue;
+            }
+
+            String module =
+                    menu.getMenuName()
+                            .trim()
+                            .toLowerCase()
+                            .replaceAll("[^a-z0-9]+", ".");
+
+            module =
+                    module.replaceAll("^\\.|\\.$", "");
+
+            if ("retail".equals(module)
+                    || "wholesale".equals(module)) {
+                continue;
+            }
+
+            if ("Y".equalsIgnoreCase(
+                    access.getCanRead())) {
+
+                permissions.add(
+                        module + ".read");
+            }
+
+            if ("Y".equalsIgnoreCase(
+                    access.getCanWrite())) {
+
+                permissions.add(
+                        module + ".write");
+            }
+
+            if ("Y".equalsIgnoreCase(
+                    access.getCanUpdate())) {
+
+                permissions.add(
+                        module + ".update");
+            }
+
+            if ("Y".equalsIgnoreCase(
+                    access.getCanDelete())) {
+
+                permissions.add(
+                        module + ".delete");
+            }
+        }
+
         UserDTO userDto = new UserDTO();
 
         userDto.setId(
                 String.valueOf(user.getId()));
 
+        userDto.setUserType(
+                user.getUserType());
+
         userDto.setRole(
                 role.getRoleName());
 
         userDto.setPermissions(
-                List.of(
-                        "schedule.read",
-                        "reports.read"
-                ));
+                permissions);
 
         String accessToken =
                 jwtService.generateAdminAccessToken(

@@ -1,7 +1,8 @@
 package com.suguna.weighment_api_service.admin.repositories;
 
 import com.suguna.weighment_api_service.admin.entities.Device;
-import com.suguna.weighment_api_service.admin.entities.DeviceId;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -11,7 +12,9 @@ import java.util.Optional;
 
 @Repository
 public interface DeviceRepository
-        extends JpaRepository<Device, DeviceId> {
+        extends JpaRepository<Device, Long> {
+
+    // Existing methods
 
     List<Device> findByApplication(
             String application);
@@ -25,4 +28,28 @@ public interface DeviceRepository
 
     boolean existsByDeviceId(
             BigDecimal deviceId);
+
+    // Pagination methods
+
+    Page<Device> findByApplication(
+            String application,
+            Pageable pageable);
+
+    Page<Device> findByApplicationAndOrganizationId(
+            String application,
+            BigDecimal organizationId,
+            Pageable pageable);
+
+    // Search + Pagination
+
+    Page<Device> findByApplicationAndAndroidIdContainingIgnoreCase(
+            String application,
+            String androidId,
+            Pageable pageable);
+
+    Page<Device> findByApplicationAndOrganizationIdAndAndroidIdContainingIgnoreCase(
+            String application,
+            BigDecimal organizationId,
+            String androidId,
+            Pageable pageable);
 }

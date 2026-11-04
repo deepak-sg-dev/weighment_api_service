@@ -11,6 +11,9 @@ public class UserDTO {
 
     private String id;
 
+    private String userType;
+
+
     private String role;
 
     private List<String> permissions;
