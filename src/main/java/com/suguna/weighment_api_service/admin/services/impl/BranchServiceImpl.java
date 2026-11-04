@@ -8,6 +8,9 @@ import com.suguna.weighment_api_service.admin.entities.OrganizationBranch;
 import com.suguna.weighment_api_service.admin.repositories.OrganizationBranchRepository;
 import com.suguna.weighment_api_service.admin.services.BranchService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -26,37 +29,72 @@ public class BranchServiceImpl implements BranchService {
             String search,
             Long branchId) {
 
-        List<OrganizationBranch> branches =
-                repository.findByDivisionNameIgnoreCase(
-                        "Broiler");
+        Pageable pageable =
+                PageRequest.of(page - 1, limit);
 
-        List<BranchItemDTO> items = branches.stream()
-                .map(branch -> {
+        Page<OrganizationBranch> branches;
 
-                    BranchItemDTO dto =
-                            new BranchItemDTO();
+        if (branchId != null) {
 
-                    dto.setId(branch.getBranchId());
-                    dto.setBranchCode(
-                            branch.getBranchCode());
-                    dto.setName(
-                            branch.getBranchName());
-                    dto.setBranchShortName(
-                            branch.getBranchShortName());
-                    dto.setZoneName(
-                            branch.getZoneName());
-                    dto.setRegion(
-                            branch.getRegion());
+            branches =
+                    repository
+                            .findByDivisionNameIgnoreCaseAndBranchId(
+                                    "Broiler",
+                                    branchId,
+                                    pageable);
 
-                    dto.setStatus(
-                            branch.getDisableDate() == null
-                                    ? "ACTIVE"
-                                    : "INACTIVE"
-                    );
+        } else if (search != null
+                && !search.trim().isEmpty()) {
 
-                    return dto;
-                })
-                .collect(Collectors.toList());
+            branches =
+                    repository
+                            .findByDivisionNameIgnoreCaseAndBranchNameContainingIgnoreCase(
+                                    "Broiler",
+                                    search,
+                                    pageable);
+
+        } else {
+
+            branches =
+                    repository.findByDivisionNameIgnoreCase(
+                            "Broiler",
+                            pageable);
+        }
+
+        List<BranchItemDTO> items =
+                branches.getContent()
+                        .stream()
+                        .map(branch -> {
+
+                            BranchItemDTO dto =
+                                    new BranchItemDTO();
+
+                            dto.setId(branch.getBranchId());
+
+                            dto.setBranchCode(
+                                    branch.getBranchCode());
+
+                            dto.setName(
+                                    branch.getBranchName());
+
+                            dto.setBranchShortName(
+                                    branch.getBranchShortName());
+
+                            dto.setZoneName(
+                                    branch.getZoneName());
+
+                            dto.setRegion(
+                                    branch.getRegion());
+
+                            dto.setStatus(
+                                    branch.getDisableDate() == null
+                                            ? "ACTIVE"
+                                            : "INACTIVE"
+                            );
+
+                            return dto;
+                        })
+                        .collect(Collectors.toList());
 
         PaginationDTO pagination =
                 new PaginationDTO();
@@ -64,7 +102,7 @@ public class BranchServiceImpl implements BranchService {
         pagination.setPage(page);
         pagination.setLimit(limit);
         pagination.setTotal(
-                (long) items.size());
+                branches.getTotalElements());
 
         BranchListResponseDTO response =
                 new BranchListResponseDTO();

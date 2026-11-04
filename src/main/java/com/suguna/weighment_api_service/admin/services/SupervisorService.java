@@ -1,12 +1,14 @@
 package com.suguna.weighment_api_service.admin.services;
 
+import com.suguna.weighment_api_service.admin.dtos.responses.SupervisorListResponseDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.SupervisorResponseDTO;
-
-import java.util.List;
 
 public interface SupervisorService {
 
-    List<SupervisorResponseDTO> getSupervisors(
+    SupervisorListResponseDTO getSupervisors(
+            Integer page,
+            Integer limit,
+            String search,
             Long branchId);
 
     SupervisorResponseDTO getSupervisor(

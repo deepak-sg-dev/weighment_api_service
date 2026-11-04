@@ -14,6 +14,9 @@ import com.suguna.weighment_api_service.admin.entities.Device;
 import com.suguna.weighment_api_service.admin.repositories.DeviceRepository;
 import com.suguna.weighment_api_service.admin.services.DeviceService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -34,24 +37,62 @@ public class DeviceServiceImpl implements DeviceService {
             String search,
             Long branchId) {
 
-        List<Device> devices;
+        if (page == null || page < 1) {
+            page = 1;
+        }
 
-        if (branchId != null) {
+        if (limit == null || limit < 1) {
+            limit = 20;
+        }
 
-            devices = repository
-                    .findByApplicationAndOrganizationId(
-                            "BRO-WEIGHMENT",
-                            BigDecimal.valueOf(branchId));
+        Pageable pageable =
+                PageRequest.of(page - 1, limit);
+
+        Page<Device> devices;
+
+        if (branchId != null
+                && search != null
+                && !search.trim().isEmpty()) {
+
+            devices =
+                    repository
+                            .findByApplicationAndOrganizationIdAndAndroidIdContainingIgnoreCase(
+                                    "BRO-WEIGHMENT",
+                                    BigDecimal.valueOf(branchId),
+                                    search,
+                                    pageable);
+
+        } else if (branchId != null) {
+
+            devices =
+                    repository
+                            .findByApplicationAndOrganizationId(
+                                    "BRO-WEIGHMENT",
+                                    BigDecimal.valueOf(branchId),
+                                    pageable);
+
+        } else if (search != null
+                && !search.trim().isEmpty()) {
+
+            devices =
+                    repository
+                            .findByApplicationAndAndroidIdContainingIgnoreCase(
+                                    "BRO-WEIGHMENT",
+                                    search,
+                                    pageable);
 
         } else {
 
-            devices = repository
-                    .findByApplication(
-                            "BRO-WEIGHMENT");
+            devices =
+                    repository
+                            .findByApplication(
+                                    "BRO-WEIGHMENT",
+                                    pageable);
         }
 
         List<DeviceItemDTO> items =
-                devices.stream()
+                devices.getContent()
+                        .stream()
                         .map(device -> {
 
                             DeviceItemDTO dto =
@@ -91,7 +132,7 @@ public class DeviceServiceImpl implements DeviceService {
         pagination.setPage(page);
         pagination.setLimit(limit);
         pagination.setTotal(
-                (long) items.size());
+                devices.getTotalElements());
 
         DeviceListResponseDTO response =
                 new DeviceListResponseDTO();
