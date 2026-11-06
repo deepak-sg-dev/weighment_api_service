@@ -65,9 +65,15 @@ public class SugMaiNtailCustomerMst {
     @Column(name = "BRANCH_CODE")
     private String branchCode;
 
+    /** Optional — add via document/retail-customer-gps-ddl.sql; enable app.oracle.erp.retail-customer-gps-enabled */
+    @Column(name = "LATITUDE")
+    private BigDecimal latitude;
+
+    @Column(name = "LONGITUDE")
+    private BigDecimal longitude;
+
     @Getter
     @Setter
-    @NoArgsConstructor
     public static class SugMaiNtailCustomerMstId implements java.io.Serializable {
         private BigDecimal customerId;
         private String customerNumber;

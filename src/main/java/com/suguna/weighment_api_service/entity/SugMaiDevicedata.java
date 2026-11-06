@@ -164,7 +164,6 @@ public class SugMaiDevicedata {
 
     @Getter
     @Setter
-    @NoArgsConstructor
     public static class SugMaiDevicedataId implements java.io.Serializable {
         private BigDecimal deviceId;
         private String application;

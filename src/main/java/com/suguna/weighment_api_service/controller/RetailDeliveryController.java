@@ -104,7 +104,9 @@ public class RetailDeliveryController {
             @RequestBody(required = false) TriggerRetailInvoiceRequest request) {
         return ResponseEntity.ok(
                 retailDeliveryService.triggerInvoice(
-                        supervisor, retailOrderId, request == null ? new TriggerRetailInvoiceRequest() : request));
+                        supervisor,
+                        retailOrderId,
+                        request == null ? new TriggerRetailInvoiceRequest() : request));
     }
 
     @GetMapping("/delivery-orders/{retailOrderId}/invoice-status")

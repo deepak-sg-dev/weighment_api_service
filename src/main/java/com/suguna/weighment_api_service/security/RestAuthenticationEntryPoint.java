@@ -15,7 +15,6 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.time.Instant;
 
 @Component
 public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
@@ -28,13 +27,8 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
             HttpServletResponse response,
             AuthenticationException authException) throws IOException {
         String message = resolveMessage(request);
-        CommonApiResponse<Void> body = CommonApiResponse.<Void>builder()
-                .success(false)
-                .errorCode(ErrorCode.UNAUTHORIZED.getErrorCode())
-                .message(message)
-                .details(java.util.Map.of())
-                .timestamp(Instant.now())
-                .build();
+        CommonApiResponse<Void> body = CommonApiResponse.error(
+                ErrorCode.UNAUTHORIZED.getErrorCode(), message, java.util.Map.of(), null);
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);

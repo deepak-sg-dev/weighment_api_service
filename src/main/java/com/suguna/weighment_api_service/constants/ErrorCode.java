@@ -48,11 +48,15 @@ public enum ErrorCode {
             HttpStatus.CONFLICT,
             false),
     SCHEDULE_CLOSED(ErrorCodes.SCHEDULE_CLOSED, "Schedule is already closed", HttpStatus.CONFLICT, false),
+    OTP_ALREADY_VERIFIED(
+            ErrorCodes.OTP_ALREADY_VERIFIED, "OTP is already verified", HttpStatus.CONFLICT, false),
+    TOO_MANY_REQUESTS(
+            ErrorCodes.TOO_MANY_REQUESTS, "Too many requests", HttpStatus.TOO_MANY_REQUESTS, true),
 
     BUSINESS_VALIDATION_FAILED(
             ErrorCodes.BUSINESS_VALIDATION_FAILED,
             "Business validation failed",
-            HttpStatus.UNPROCESSABLE_ENTITY,
+            HttpStatus.valueOf(422),
             false),
 
     INTERNAL_ERROR(ErrorCodes.INTERNAL_ERROR, "Internal server error", HttpStatus.INTERNAL_SERVER_ERROR, true),

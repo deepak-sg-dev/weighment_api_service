@@ -128,4 +128,25 @@ public class SugMaiBirdsLiftingOrder {
     @Column(name = "WEIGHMENT_TYPE")
     private String weighmentType;
 
+    @Column(name = "DOWNLOAD_FLAG")
+    private String downloadFlag;
+
+    @Column(name = "DOWNLOADED_DATE")
+    private LocalDateTime downloadedDate;
+
+    @Column(name = "STARTED_DATE")
+    private LocalDateTime startedDate;
+
+    @Column(name = "LIFTING_STATUS")
+    private String liftingStatus;
+
+    @Column(name = "DELIVERY_STATUS")
+    private String deliveryStatus;
+
+    @Column(name = "UPDATED_AT")
+    private LocalDateTime updatedAt;
+
+    @Column(name = "UPDATED_BY")
+    private String updatedBy;
+
 }

@@ -13,11 +13,25 @@ import com.suguna.weighment_api_service.dto.transaction.TransactionRetryRequest;
 import com.suguna.weighment_api_service.exception.ApiException;
 import com.suguna.weighment_api_service.exception.BusinessValidationException;
 import com.suguna.weighment_api_service.exception.ConflictException;
+import com.suguna.weighment_api_service.dto.transaction.WeighmentSubmissionDetailResponse;
+import com.suguna.weighment_api_service.dto.transaction.WeighmentSubmissionHistoryResponse;
+import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
+import com.suguna.weighment_api_service.integration.oracle.LiftingScheduleSqlClient;
 import com.suguna.weighment_api_service.integration.oracle.TransactionSqlClient;
+import com.suguna.weighment_api_service.integration.oracle.TransactionSqlClient.SubmissionHeaderSnapshot;
+import com.suguna.weighment_api_service.integration.oracle.WeighmentDetailSqlClient;
+import com.suguna.weighment_api_service.integration.oracle.WeighmentDetailSqlClient.StoredWeighmentDetailLine;
+import com.suguna.weighment_api_service.mapper.WeighmentSubmissionMapper;
 import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.repository.TransactionRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
+import com.suguna.weighment_api_service.config.ApiV2Properties;
+import com.suguna.weighment_api_service.constants.WeighmentWorkflowStep;
+import com.suguna.weighment_api_service.dto.transaction.SubmitCompletedWeighmentRequest.WeighmentEntry;
+import com.suguna.weighment_api_service.util.LiveReadingValidation;
+import com.suguna.weighment_api_service.util.WeighmentEntryCategory;
 import com.suguna.weighment_api_service.util.WeighmentSubmitKeys;
+import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,15 +40,30 @@ public class TransactionService {
 
     private final TransactionRepository transactionRepository;
     private final TransactionSqlClient transactionSqlClient;
+    private final WeighmentDetailSqlClient weighmentDetailSqlClient;
+    private final WeighmentSubmissionMapper submissionMapper;
     private final ScheduleRepository scheduleRepository;
+    private final LiftingScheduleSqlClient liftingScheduleSqlClient;
+    private final ScheduleWorkflowService scheduleWorkflowService;
+    private final ApiV2Properties apiV2Properties;
 
     public TransactionService(
             TransactionRepository transactionRepository,
             TransactionSqlClient transactionSqlClient,
-            ScheduleRepository scheduleRepository) {
+            WeighmentDetailSqlClient weighmentDetailSqlClient,
+            WeighmentSubmissionMapper submissionMapper,
+            ScheduleRepository scheduleRepository,
+            LiftingScheduleSqlClient liftingScheduleSqlClient,
+            ScheduleWorkflowService scheduleWorkflowService,
+            ApiV2Properties apiV2Properties) {
         this.transactionRepository = transactionRepository;
         this.transactionSqlClient = transactionSqlClient;
+        this.weighmentDetailSqlClient = weighmentDetailSqlClient;
+        this.submissionMapper = submissionMapper;
         this.scheduleRepository = scheduleRepository;
+        this.liftingScheduleSqlClient = liftingScheduleSqlClient;
+        this.scheduleWorkflowService = scheduleWorkflowService;
+        this.apiV2Properties = apiV2Properties;
     }
 
     @Transactional
@@ -42,10 +71,12 @@ public class TransactionService {
             AuthenticatedSupervisor supervisor, SubmitCompletedWeighmentRequest request) {
         validateDevice(supervisor, request.getDeviceId());
         validateSupervisor(supervisor, request.getSupervisorId());
-        validateSubmissionEvidence(request);
+        String scheduleId = WeighmentSubmitKeys.normalizeScheduleId(request.getScheduleId());
+        validateWeighmentEntries(scheduleId, request.getWeighmentEntries());
+        validateSubmissionEvidence(scheduleId, request);
+        validateWeighmentTotals(request.getTotals());
 
         String supervisorCode = supervisor.getSupervisor().getCode();
-        String scheduleId = WeighmentSubmitKeys.normalizeScheduleId(request.getScheduleId());
         String transactionKey = WeighmentSubmitKeys.transactionKey(scheduleId);
 
         LiftingSchedule schedule = scheduleRepository
@@ -63,16 +94,59 @@ public class TransactionService {
 
         var existing = transactionSqlClient.findByScheduleId(scheduleId, supervisorCode);
         if (existing.isPresent() && transactionSqlClient.hasWeighmentDetailLines(transactionKey)) {
+            syncLiftingOrderAfterWeighment(supervisorCode, scheduleId, request);
             return existing.get().toResponse(scheduleId);
         }
 
         return transactionRepository.submitCompleted(supervisorCode, request);
     }
 
+    private void syncLiftingOrderAfterWeighment(
+            String supervisorCode, String scheduleId, SubmitCompletedWeighmentRequest request) {
+        String saleType = weighmentDetailSqlClient.resolveBusinessModule(
+                scheduleId, request.effectiveSaleType(), request.effectiveBirdType());
+        liftingScheduleSqlClient.markLiftingCompletedAfterWeighment(supervisorCode, scheduleId, saleType);
+    }
+
     public TransactionAcknowledgementResponse getAcknowledgement(
             AuthenticatedSupervisor supervisor, String transactionId) {
         return transactionRepository.getAcknowledgement(transactionId);
     }
+
+    public WeighmentSubmissionDetailResponse getSubmissionDetail(
+            AuthenticatedSupervisor supervisor, String scheduleId) {
+        SubmissionLoad load = loadSubmission(supervisor, scheduleId);
+        return submissionMapper.toDetailResponse(load.scheduleId(), load.header(), load.lines());
+    }
+
+    public WeighmentSubmissionHistoryResponse getSubmissionHistory(
+            AuthenticatedSupervisor supervisor, String scheduleId) {
+        SubmissionLoad load = loadSubmission(supervisor, scheduleId);
+        return submissionMapper.toHistoryResponse(load.scheduleId(), load.header(), load.lines());
+    }
+
+    private SubmissionLoad loadSubmission(AuthenticatedSupervisor supervisor, String scheduleId) {
+        String supervisorCode = supervisor.getSupervisor().getCode();
+        String normalizedScheduleId = WeighmentSubmitKeys.normalizeScheduleId(scheduleId);
+        scheduleRepository
+                .findByScheduleIdAndSupervisorId(normalizedScheduleId, supervisorCode)
+                .orElseThrow(() -> new ResourceNotFoundException("Schedule", normalizedScheduleId));
+
+        SubmissionHeaderSnapshot header = transactionSqlClient
+                .findSubmissionHeader(normalizedScheduleId, supervisorCode)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Weighment submission", normalizedScheduleId));
+
+        String transactionKey = WeighmentSubmitKeys.transactionKey(normalizedScheduleId);
+        List<StoredWeighmentDetailLine> lines = weighmentDetailSqlClient.listLiftingCompleteLines(transactionKey);
+        if (lines.isEmpty()) {
+            throw new ResourceNotFoundException("Weighment submission lines", normalizedScheduleId);
+        }
+        return new SubmissionLoad(normalizedScheduleId, header, lines);
+    }
+
+    private record SubmissionLoad(
+            String scheduleId, SubmissionHeaderSnapshot header, List<StoredWeighmentDetailLine> lines) {}
 
     public TransactionActionResponse retryTransaction(
             AuthenticatedSupervisor supervisor,
@@ -105,17 +179,48 @@ public class TransactionService {
         }
     }
 
-    private void validateSubmissionEvidence(SubmitCompletedWeighmentRequest request) {
+    private void validateWeighmentTotals(SubmitCompletedWeighmentRequest.WeighmentTotals totals) {
+        if (totals == null) {
+            throw new BusinessValidationException(ErrorCodes.VALIDATION_PENDING, "Weighment totals are required");
+        }
+        if (totals.getTotalBirds() == null || totals.getTotalCagesOrBatches() == null) {
+            throw new BusinessValidationException(
+                    ErrorCodes.VALIDATION_PENDING, "totals.totalBirds and totals.totalCagesOrBatches are required");
+        }
+        if (totals.getTotalGross() == null || totals.getTotalNet() == null || totals.getTotalTare() == null) {
+            throw new BusinessValidationException(
+                    ErrorCodes.VALIDATION_PENDING, "totals totalGross, totalNet, and totalTare are required");
+        }
+    }
+
+    private void validateWeighmentEntries(String scheduleId, List<WeighmentEntry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return;
+        }
+        for (WeighmentEntry entry : entries) {
+            WeighmentEntryCategory.validateIfPresent(entry.getSequence(), entry.getCategory());
+            if (apiV2Properties.isLiveReadingsRequired()
+                    || entry.getLiveReadings() != null
+                    || entry.getLiveReadingsAverage() != null) {
+                LiveReadingValidation.validateEntry(
+                        entry.getSequence(), entry.getLiveReadings(), entry.getLiveReadingsAverage());
+            }
+        }
+    }
+
+    private void validateSubmissionEvidence(String scheduleId, SubmitCompletedWeighmentRequest request) {
         SubmitCompletedWeighmentRequest.FarmValidation farm = request.getFarmValidation();
         if (farm == null) {
             throw new BusinessValidationException(
                     ErrorCodes.VALIDATION_PENDING, "Farm validation evidence is required");
         }
-        if (!Boolean.TRUE.equals(farm.getFarmerOtpVerified())) {
+        if (scheduleWorkflowService.isLiftingStepEnabled(scheduleId, WeighmentWorkflowStep.OTP_VERIFICATION)
+                && !Boolean.TRUE.equals(farm.getFarmerOtpVerified())) {
             throw new BusinessValidationException(
                     ErrorCodes.VALIDATION_PENDING, "Farmer OTP verification must be completed before submission");
         }
-        if (!Boolean.TRUE.equals(farm.getGeofencePassed())) {
+        if (scheduleWorkflowService.isLiftingStepEnabled(scheduleId, WeighmentWorkflowStep.GEOFENCING)
+                && !Boolean.TRUE.equals(farm.getGeofencePassed())) {
             throw new BusinessValidationException(
                     ErrorCodes.BUSINESS_VALIDATION_FAILED, "Geofence validation failed");
         }

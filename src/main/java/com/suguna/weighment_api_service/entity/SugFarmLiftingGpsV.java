@@ -4,10 +4,10 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -70,8 +70,9 @@ public class SugFarmLiftingGpsV {
 
     @Getter
     @Setter
-    @NoArgsConstructor
+    @EqualsAndHashCode
     public static class SugFarmLiftingGpsVId implements java.io.Serializable {
+        private static final long serialVersionUID = 1L;
         private String farmCode;
         private String branchCode;
     }

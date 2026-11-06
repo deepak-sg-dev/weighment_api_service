@@ -13,6 +13,12 @@ public class OracleLiftingProperties {
     /** Log package procedures from ALL_PROCEDURES on startup (dev aid). */
     private boolean introspectOnStartup = false;
 
+    /**
+     * When true, schedule start calls {@code sug_mai_birds_lifting_pkg.get_order_status} (can add seconds
+     * per request). Default false for fast mobile start; enable when ERP requires validation on start.
+     */
+    private boolean invokeOrderStatusOnStart = false;
+
     private Procedures procedures = new Procedures();
 
     private Parameters parameters = new Parameters();
@@ -39,6 +45,14 @@ public class OracleLiftingProperties {
 
     public void setIntrospectOnStartup(boolean introspectOnStartup) {
         this.introspectOnStartup = introspectOnStartup;
+    }
+
+    public boolean isInvokeOrderStatusOnStart() {
+        return invokeOrderStatusOnStart;
+    }
+
+    public void setInvokeOrderStatusOnStart(boolean invokeOrderStatusOnStart) {
+        this.invokeOrderStatusOnStart = invokeOrderStatusOnStart;
     }
 
     public Procedures getProcedures() {

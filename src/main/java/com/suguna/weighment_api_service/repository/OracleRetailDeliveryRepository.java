@@ -10,10 +10,11 @@ import com.suguna.weighment_api_service.dto.retail.RetailDeliveryOrderSummaryDto
 import com.suguna.weighment_api_service.dto.retail.RetailInvoiceStatusResponse;
 import com.suguna.weighment_api_service.dto.retail.RetailLocationDto;
 import com.suguna.weighment_api_service.integration.oracle.RetailDeliverySqlClient;
+import com.suguna.weighment_api_service.integration.oracle.RetailRetailerOtpResolution;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 
 @Repository
 public class OracleRetailDeliveryRepository implements RetailDeliveryRepository {
@@ -32,6 +33,12 @@ public class OracleRetailDeliveryRepository implements RetailDeliveryRepository 
     @Override
     public List<RetailDeliveryOrderSummaryDto> listDeliveryOrders(RetailScheduleContext schedule) {
         return retailDeliverySqlClient.listDeliveryOrders(schedule);
+    }
+
+    @Override
+    public Map<String, List<RetailDeliveryOrderSummaryDto>> listDeliveryOrdersGroupedBySchedule(
+            String supervisorCode, List<String> scheduleIds) {
+        return retailDeliverySqlClient.listDeliveryOrdersGroupedBySchedule(supervisorCode, scheduleIds);
     }
 
     @Override
@@ -57,8 +64,23 @@ public class OracleRetailDeliveryRepository implements RetailDeliveryRepository 
     }
 
     @Override
-    public Optional<String> findExpectedRetailerOtp(RetailScheduleContext schedule, String retailOrderId) {
-        return retailDeliverySqlClient.findExpectedRetailerOtp(schedule, retailOrderId);
+    public RetailRetailerOtpResolution resolveRetailerOtp(RetailScheduleContext schedule, String retailOrderId) {
+        return retailDeliverySqlClient.resolveRetailerOtp(schedule, retailOrderId);
+    }
+
+    @Override
+    public boolean isRetailerOtpVerified(RetailScheduleContext schedule, String retailOrderId) {
+        return retailDeliverySqlClient.isRetailerOtpVerified(schedule, retailOrderId);
+    }
+
+    @Override
+    public void replaceRetailerOtp(RetailScheduleContext schedule, String retailOrderId, String newOtp) {
+        retailDeliverySqlClient.replaceRetailerOtp(schedule, retailOrderId, newOtp);
+    }
+
+    @Override
+    public void markRetailerOtpVerified(RetailScheduleContext schedule, String retailOrderId) {
+        retailDeliverySqlClient.markRetailerOtpVerified(schedule, retailOrderId);
     }
 
     @Override

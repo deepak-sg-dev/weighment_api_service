@@ -1,10 +1,8 @@
 package com.suguna.weighment_api_service.security;
 
 import com.suguna.weighment_api_service.domain.SupervisorProfile;
-import lombok.Getter;
 import org.springframework.security.core.AuthenticatedPrincipal;
 
-@Getter
 public class AuthenticatedSupervisor implements AuthenticatedPrincipal {
 
     private final String deviceId;
@@ -13,6 +11,14 @@ public class AuthenticatedSupervisor implements AuthenticatedPrincipal {
     public AuthenticatedSupervisor(String deviceId, SupervisorProfile supervisor) {
         this.deviceId = deviceId;
         this.supervisor = supervisor;
+    }
+
+    public String getDeviceId() {
+        return deviceId;
+    }
+
+    public SupervisorProfile getSupervisor() {
+        return supervisor;
     }
 
     @Override

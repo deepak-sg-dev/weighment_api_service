@@ -2,6 +2,8 @@ package com.suguna.weighment_api_service.controller;
 
 import com.suguna.weighment_api_service.dto.transaction.SubmitCompletedWeighmentRequest;
 import com.suguna.weighment_api_service.dto.transaction.SubmitCompletedWeighmentResponse;
+import com.suguna.weighment_api_service.dto.transaction.WeighmentSubmissionDetailResponse;
+import com.suguna.weighment_api_service.dto.transaction.WeighmentSubmissionHistoryResponse;
 import com.suguna.weighment_api_service.dto.transaction.TransactionAcknowledgementResponse;
 import com.suguna.weighment_api_service.dto.transaction.TransactionActionResponse;
 import com.suguna.weighment_api_service.dto.transaction.TransactionCorrectionRequest;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -35,6 +38,20 @@ public class TransactionController {
             @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
             @Valid @RequestBody SubmitCompletedWeighmentRequest request) {
         return ResponseEntity.ok(transactionService.submitCompletedWeighment(supervisor, request));
+    }
+
+    @GetMapping("/detail")
+    public ResponseEntity<WeighmentSubmissionDetailResponse> getSubmissionDetail(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @RequestParam String scheduleId) {
+        return ResponseEntity.ok(transactionService.getSubmissionDetail(supervisor, scheduleId));
+    }
+
+    @GetMapping("/history")
+    public ResponseEntity<WeighmentSubmissionHistoryResponse> getSubmissionHistory(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @RequestParam String scheduleId) {
+        return ResponseEntity.ok(transactionService.getSubmissionHistory(supervisor, scheduleId));
     }
 
     @GetMapping("/{transactionId}/acknowledgement")

@@ -1,11 +1,17 @@
 package com.suguna.weighment_api_service.dto.weighment.schedule;
 
 import java.util.List;
-import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
 
-@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 @Builder
+@Getter
+@Setter
 public class VehiclePhotoUploadResponse {
 
     private boolean success;
@@ -15,8 +21,11 @@ public class VehiclePhotoUploadResponse {
     /** All uploaded files (single or multiple). */
     private List<VehiclePhotoInfo> photos;
 
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
     @Getter
-    @Builder
+    @Setter
     public static class VehiclePhotoInfo {
         private String fileKey;
         private String uploadedAt;

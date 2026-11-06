@@ -8,10 +8,13 @@ import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleActionRes
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.StartScheduleRequest;
+import com.suguna.weighment_api_service.dto.weighment.schedule.UpdateScheduleVehicleRequest;
+import com.suguna.weighment_api_service.dto.weighment.schedule.UpdateScheduleVehicleResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.VehiclePhotoUploadResponse;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.service.ScheduleOtpService;
 import com.suguna.weighment_api_service.service.ScheduleService;
+import com.suguna.weighment_api_service.service.ScheduleVehicleService;
 import com.suguna.weighment_api_service.service.WeighmentVehiclePhotoService;
 import com.suguna.weighment_api_service.util.MultipartPhotos;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,6 +25,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,21 +42,27 @@ public class WeighmentScheduleController {
     private final ScheduleService scheduleService;
     private final ScheduleOtpService scheduleOtpService;
     private final WeighmentVehiclePhotoService vehiclePhotoService;
+    private final ScheduleVehicleService scheduleVehicleService;
 
     public WeighmentScheduleController(
             ScheduleService scheduleService,
             ScheduleOtpService scheduleOtpService,
-            WeighmentVehiclePhotoService vehiclePhotoService) {
+            WeighmentVehiclePhotoService vehiclePhotoService,
+            ScheduleVehicleService scheduleVehicleService) {
         this.scheduleService = scheduleService;
         this.scheduleOtpService = scheduleOtpService;
         this.vehiclePhotoService = vehiclePhotoService;
+        this.scheduleVehicleService = scheduleVehicleService;
     }
 
     @GetMapping
     public ResponseEntity<ScheduleListResponse> listSchedules(
             @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
-            @RequestParam(required = false) String status) {
-        return ResponseEntity.ok(scheduleService.getAssignedSchedules(supervisor, status));
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Integer lookbackDays,
+            @RequestParam(required = false) String scheduleIds) {
+        return ResponseEntity.ok(
+                scheduleService.getAssignedSchedules(supervisor, status, lookbackDays, scheduleIds));
     }
 
     /** Use for composite schedule ids (e.g. {@code 211342644/1.1}) — slashes cannot be extra path segments. */
@@ -107,6 +117,14 @@ public class WeighmentScheduleController {
             @PathVariable String scheduleId,
             @Valid @RequestBody MarkScheduleDownloadedRequest request) {
         return ResponseEntity.ok(scheduleService.markDownloaded(supervisor, scheduleId, request));
+    }
+
+    @PatchMapping("/{scheduleId}/vehicle")
+    public ResponseEntity<UpdateScheduleVehicleResponse> updateVehicle(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @PathVariable String scheduleId,
+            @Valid @RequestBody UpdateScheduleVehicleRequest request) {
+        return ResponseEntity.ok(scheduleVehicleService.updateVehicle(supervisor, scheduleId, request));
     }
 
     @PostMapping("/{scheduleId}/start")

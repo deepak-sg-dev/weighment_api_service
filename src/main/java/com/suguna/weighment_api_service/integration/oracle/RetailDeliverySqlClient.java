@@ -1,5 +1,6 @@
 package com.suguna.weighment_api_service.integration.oracle;
 
+import com.suguna.weighment_api_service.config.ApiV2Properties;
 import com.suguna.weighment_api_service.config.OracleErpProperties;
 import com.suguna.weighment_api_service.domain.RetailScheduleContext;
 import com.suguna.weighment_api_service.dto.retail.CompleteRetailDeliveryRequest;
@@ -12,6 +13,9 @@ import com.suguna.weighment_api_service.dto.retail.RetailInvoiceStatusResponse;
 import com.suguna.weighment_api_service.dto.retail.RetailLocationDto;
 import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -20,6 +24,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -50,99 +56,104 @@ public class RetailDeliverySqlClient {
                AND """
             + ORDER_SUPERVISOR_MATCH;
 
-    private static final String LIST_NTAIL_ORDERS_SQL =
-            """
-            SELECT o.refid,
-                   o.order_no,
-                   TO_CHAR(o.customer_code) AS customer_code,
-                   NVL(o.quantity, 0) AS quantity,
-                   NVL(o.weight, 0) AS weight,
-                   o.item_name,
-                   o.uploaded_flag,
-                   o.message,
-                   o.branch_code,
-                   o.region,
-                   c.customer_name,
-                   c.mobile_no,
-                   c.address
-              FROM sug_mai_ntail_order o
-              LEFT JOIN sug_mai_ntail_customer_mst c
-                ON c.customer_number = TO_CHAR(o.customer_code)
-               AND c.branch_code = o.branch_code
-             WHERE o.branch_code = ?
-               AND o.region = ?
-               AND TRUNC(o.trans_date) = TRUNC(?)
-             ORDER BY o.order_no DESC
-            """;
-
-    private static final String LOAD_NTAIL_BY_ORDER_SQL =
-            """
-            SELECT o.refid,
-                   o.order_no,
-                   TO_CHAR(o.customer_code) AS customer_code,
-                   NVL(o.quantity, 0) AS quantity,
-                   NVL(o.weight, 0) AS weight,
-                   o.item_name,
-                   o.uploaded_flag,
-                   o.message,
-                   o.branch_code,
-                   o.region,
-                   c.customer_name,
-                   c.mobile_no,
-                   c.address
-              FROM sug_mai_ntail_order o
-              LEFT JOIN sug_mai_ntail_customer_mst c
-                ON c.customer_number = TO_CHAR(o.customer_code)
-               AND c.branch_code = o.branch_code
-             WHERE TO_CHAR(o.order_no) = TRIM(?)
-               AND o.branch_code = ?
-               AND o.region = ?
-               AND TRUNC(o.trans_date) = TRUNC(?)
-            """;
-
-    private static final String MARK_ARRIVED_SQL =
-            """
-            UPDATE sug_mai_ntail_order o
-               SET o.message = ?,
-                   o.uploaded_date = SYSDATE
-             WHERE TO_CHAR(o.order_no) = TRIM(?)
-               AND TO_CHAR(o.customer_code) = TRIM(?)
-               AND o.branch_code = ?
-               AND o.region = ?
-               AND TRUNC(o.trans_date) = TRUNC(?)
-            """;
-
-    private static final String COMPLETE_DELIVERY_SQL =
-            """
-            UPDATE sug_mai_ntail_order o
-               SET o.uploaded_flag = 'Y',
-                   o.message = ?,
-                   o.uploaded_date = SYSDATE,
-                   o.weight = NVL(?, o.weight),
-                   o.quantity = NVL(?, o.quantity)
-             WHERE TO_CHAR(o.order_no) = TRIM(?)
-               AND TO_CHAR(o.customer_code) = TRIM(?)
-               AND o.branch_code = ?
-               AND o.region = ?
-               AND TRUNC(o.trans_date) = TRUNC(?)
-            """;
-
-    private static final String INVOICE_STATUS_SQL =
-            """
-            SELECT s.local_dc_no,
-                   s.local_receipt_no,
-                   s.created_date
-              FROM sug_mai_ntail_sales_data s
-             WHERE s.orderdbid = ?
-             ORDER BY s.created_date DESC
-            """;
-
     private final JdbcTemplate jdbcTemplate;
     private final OracleErpProperties erpProperties;
+    private final ApiV2Properties apiV2Properties;
+    private final RetailOrderLineSqlSupport retailOrderSql;
+    private final String listRetailOrdersSql;
+    private final String loadRetailOrderByNoSql;
+    private final String markArrivedSql;
+    private final String completeDeliverySql;
+    private final String invoiceStatusSql;
+    private final String updateRetailOtpMessageSql;
+    private final String updateRetailOtpVerifiedSql;
 
-    public RetailDeliverySqlClient(JdbcTemplate jdbcTemplate, OracleErpProperties erpProperties) {
+    public RetailDeliverySqlClient(
+            JdbcTemplate jdbcTemplate,
+            OracleErpProperties erpProperties,
+            ApiV2Properties apiV2Properties,
+            RetailOrderLineSqlSupport retailOrderSql) {
         this.jdbcTemplate = jdbcTemplate;
         this.erpProperties = erpProperties;
+        this.apiV2Properties = apiV2Properties;
+        this.retailOrderSql = retailOrderSql;
+        this.listRetailOrdersSql = retailOrderSql.selectDetailCoreColumns()
+                + retailOrderSql.selectDelvStatusColumn()
+                + retailOrderSql.selectDelvStartedColumn()
+                + retailOrderSql.selectRetailOtpColumns()
+                + retailOrderSql.selectDetailGpsColumns()
+                + retailOrderSql.fromScheduleToDetailJoin()
+                + retailOrderSql.whereLiftingScheduleForRetailRead()
+                + """
+             ORDER BY rod.order_no DESC
+            """;
+        this.loadRetailOrderByNoSql = retailOrderSql.selectDetailCoreColumns()
+                + retailOrderSql.selectDelvStatusColumn()
+                + retailOrderSql.selectDelvStartedColumn()
+                + retailOrderSql.selectRetailOtpColumns()
+                + retailOrderSql.selectDetailGpsColumns()
+                + retailOrderSql.fromScheduleToDetailJoin()
+                + retailOrderSql.whereLiftingScheduleForRetailSecure()
+                + RetailOrderLineSqlSupport.andDetailOrderNo();
+        this.markArrivedSql =
+                retailOrderSql.buildDetailUpdatePrefix()
+                        + """
+                        rod.message = ?,
+                           rod.uploaded_date = SYSDATE
+                        """
+                        + RetailOrderLineSqlSupport.updateWhereClause()
+                        + RetailOrderLineSqlSupport.whereDetailOrderNo()
+                        + retailOrderSql.andDetailCustomerCodeFilter().trim()
+                        + " AND "
+                        + retailOrderSql.existsDetailLinkedToSchedule();
+        this.completeDeliverySql =
+                retailOrderSql.buildDetailUpdatePrefix()
+                        + """
+                        rod.uploaded_flag = 'Y',
+                           rod.message = ?,
+                           rod.uploaded_date = SYSDATE,
+                           rod.weight = NVL(?, rod.weight),
+                           rod.quantity = NVL(?, rod.quantity)"""
+                        + retailOrderSql.buildMarkRetailOtpVerifiedSetSuffix()
+                        + "\n"
+                        + RetailOrderLineSqlSupport.updateWhereClause()
+                        + RetailOrderLineSqlSupport.whereDetailOrderNo()
+                        + retailOrderSql.andDetailCustomerCodeFilter().trim()
+                        + " AND "
+                        + retailOrderSql.existsDetailLinkedToSchedule();
+        this.invoiceStatusSql = """
+            SELECT roh.local_dc_no,
+                   roh.local_receipt_no,
+                   roh.creation_date
+            """
+                + retailOrderSql.fromScheduleToDetailJoin()
+                + retailOrderSql.whereLiftingScheduleForRetailSecure()
+                + RetailOrderLineSqlSupport.andDetailOrderNo()
+                + """
+             ORDER BY roh.creation_date DESC
+            """;
+        this.updateRetailOtpMessageSql =
+                retailOrderSql.buildDetailUpdatePrefix()
+                        + retailOrderSql.buildReplaceRetailOtpSetClause()
+                        + RetailOrderLineSqlSupport.updateWhereClause()
+                        + RetailOrderLineSqlSupport.whereDetailOrderNo()
+                        + " AND "
+                        + retailOrderSql.existsDetailLinkedToSchedule();
+        this.updateRetailOtpVerifiedSql =
+                retailOrderSql.buildDetailUpdatePrefix()
+                        + retailOrderSql.buildMarkRetailOtpVerifiedSetClause()
+                        + RetailOrderLineSqlSupport.updateWhereClause()
+                        + RetailOrderLineSqlSupport.whereDetailOrderNo()
+                        + " AND "
+                        + retailOrderSql.existsDetailLinkedToSchedule();
+    }
+
+    static String sanitizeOracleColumnName(String raw, String fallback) {
+        String candidate = raw == null || raw.isBlank() ? fallback : raw.trim().toUpperCase(Locale.ROOT);
+        if (!candidate.matches("[A-Z][A-Z0-9_]*")) {
+            throw new IllegalStateException("Invalid Oracle column name for retail GPS: " + candidate);
+        }
+        return candidate;
     }
 
     public RetailScheduleContext loadRetailSchedule(String supervisorCode, String scheduleId) {
@@ -171,48 +182,113 @@ public class RetailDeliverySqlClient {
     }
 
     public List<RetailDeliveryOrderSummaryDto> listDeliveryOrders(RetailScheduleContext schedule) {
-        Timestamp orderDate = Timestamp.from(schedule.getOrderDate());
         return jdbcTemplate.query(
-                LIST_NTAIL_ORDERS_SQL,
+                listRetailOrdersSql,
                 (rs, rowNum) -> mapSummary(rs, schedule.getScheduleId()),
-                schedule.getRetailBranchCode(),
-                schedule.getRegionCode(),
-                orderDate);
+                scheduleReadBindArgs(schedule.getScheduleId()));
+    }
+
+    /**
+     * Loads retail lines for many schedules in one Oracle round-trip (OR of indent match), grouped by
+     * {@code lifting_schedule_id}. Same columns as {@link #listDeliveryOrders}.
+     */
+    public Map<String, List<RetailDeliveryOrderSummaryDto>> listDeliveryOrdersGroupedBySchedule(
+            String supervisorCode, List<String> scheduleIds) {
+        if (scheduleIds == null || scheduleIds.isEmpty()) {
+            return Map.of();
+        }
+        List<String> normalizedIds = scheduleIds.stream()
+                .map(ScheduleIdSupport::normalize)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .toList();
+        if (normalizedIds.isEmpty()) {
+            return Map.of();
+        }
+        if (normalizedIds.size() == 1) {
+            String only = normalizedIds.get(0);
+            List<RetailDeliveryOrderSummaryDto> orders = listDeliveryOrders(singleScheduleContext(supervisorCode, only));
+            if (orders.isEmpty()) {
+                return Map.of();
+            }
+            return Map.of(only, orders);
+        }
+
+        String sql = listRetailOrdersBatchSql(normalizedIds.size());
+        Object[] args = scheduleReadBindArgsBatch(normalizedIds);
+        Map<String, List<RetailDeliveryOrderSummaryDto>> grouped = new LinkedHashMap<>();
+        jdbcTemplate.query(
+                sql,
+                rs -> {
+                    String scheduleKey = ScheduleIdSupport.normalize(rs.getString("lifting_schedule_id"));
+                    grouped.computeIfAbsent(scheduleKey, key -> new ArrayList<>())
+                            .add(mapSummary(rs, scheduleKey));
+                },
+                args);
+        return grouped;
+    }
+
+    private RetailScheduleContext singleScheduleContext(String supervisorCode, String scheduleId) {
+        return RetailScheduleContext.builder()
+                .scheduleId(scheduleId)
+                .supervisorCode(supervisorCode)
+                .regionCode(null)
+                .retailBranchCode("")
+                .orderDate(null)
+                .internalPoNumber(null)
+                .build();
+    }
+
+    private String listRetailOrdersBatchSql(int scheduleCount) {
+        return retailOrderSql.selectDetailListSqlPrefix()
+                + retailOrderSql.selectDelvStatusColumn()
+                + retailOrderSql.selectDelvStartedColumn()
+                + retailOrderSql.selectRetailOtpColumns()
+                + retailOrderSql.selectDetailGpsColumns()
+                + retailOrderSql.fromScheduleToDetailJoin()
+                + retailOrderSql.whereLiftingSchedulesScopeForRetail(scheduleCount, false)
+                + """
+             ORDER BY e.erpindentid, rod.order_no DESC
+            """;
+    }
+
+    private Object[] scheduleReadBindArgsBatch(List<String> normalizedScheduleIds) {
+        List<Object> args = new ArrayList<>(normalizedScheduleIds.size() * 2 + 3);
+        for (String scheduleId : normalizedScheduleIds) {
+            args.add(scheduleId);
+            args.add(scheduleId);
+        }
+        args.add(erpProperties.getRetailLiftingSource());
+        args.add(erpProperties.getApplicationCode());
+        args.add(erpProperties.getApplicationCode());
+        return args.toArray();
     }
 
     public RetailDeliveryOrderDetailDto getDeliveryOrder(RetailScheduleContext schedule, String retailOrderId) {
-        Timestamp orderDate = Timestamp.from(schedule.getOrderDate());
         try {
+            Object[] args = scheduleBindArgsWithOrder(schedule, retailOrderId);
             return jdbcTemplate.queryForObject(
-                    LOAD_NTAIL_BY_ORDER_SQL,
-                    (rs, rowNum) -> mapDetail(rs, schedule.getScheduleId()),
-                    retailOrderId,
-                    schedule.getRetailBranchCode(),
-                    schedule.getRegionCode(),
-                    orderDate);
+                    loadRetailOrderByNoSql, (rs, rowNum) -> mapDetail(rs, schedule.getScheduleId()), args);
         } catch (EmptyResultDataAccessException ex) {
             throw new ResourceNotFoundException("Retail delivery order", retailOrderId);
         }
     }
 
     public List<RetailLocationDto> listRetailerLocations(RetailScheduleContext schedule) {
-        Timestamp orderDate = Timestamp.from(schedule.getOrderDate());
         return jdbcTemplate.query(
-                LIST_NTAIL_ORDERS_SQL,
+                listRetailOrdersSql,
                 (rs, rowNum) -> {
-                    RetailOrderRow row = mapRow(rs);
-                    return RetailLocationDto.builder()
-                            .retailOrderId(row.orderNo())
-                            .retailerId(row.customerCode())
-                            .retailerName(row.customerName())
-                            .latitude(0)
-                            .longitude(0)
-                            .address(row.address())
-                            .build();
+                    RetailOrderRow row = this.mapRow(rs);
+                    RetailLocationDto location = new RetailLocationDto();
+                    location.setRetailOrderId(row.orderNo());
+                    location.setRetailerId(row.customerCode());
+                    location.setRetailerName(row.customerName());
+                    location.setLatitude(row.latitude());
+                    location.setLongitude(row.longitude());
+                    location.setAddress(row.address());
+                    return location;
                 },
-                schedule.getRetailBranchCode(),
-                schedule.getRegionCode(),
-                orderDate);
+                scheduleReadBindArgs(schedule.getScheduleId()));
     }
 
     public RetailDeliveryActionResponse markArrived(
@@ -225,13 +301,8 @@ public class RetailDeliverySqlClient {
                 + "|LON:"
                 + request.getLocation().getLongitude();
         int updated = jdbcTemplate.update(
-                MARK_ARRIVED_SQL,
-                message,
-                retailOrderId,
-                request.getRetailerId(),
-                schedule.getRetailBranchCode(),
-                schedule.getRegionCode(),
-                Timestamp.from(schedule.getOrderDate()));
+                markArrivedSql,
+                mergeUpdateArgs(message, retailOrderId, request.getRetailerId(), schedule));
         if (updated == 0) {
             throw new ResourceNotFoundException("Retail delivery order", retailOrderId);
         }
@@ -248,89 +319,196 @@ public class RetailDeliverySqlClient {
         ensureOrderMatchesRetailer(schedule, retailOrderId, request.getRetailerId());
         RetailOrderRow row = loadOrderRow(schedule, retailOrderId);
         if (isIdempotencyReplay(row.message(), request.getIdempotencyKey())) {
-            return CompleteRetailDeliveryResponse.builder()
-                    .success(true)
-                    .status("COMPLETED")
-                    .deliveryReference(deliveryReference(retailOrderId))
-                    .invoiceStatus("PENDING")
-                    .build();
+            return completedDeliveryResponse(retailOrderId, "COMPLETED");
         }
 
         String message = formatCompletionMessage(request);
-        int updated = jdbcTemplate.update(
-                COMPLETE_DELIVERY_SQL,
-                message,
-                request.getDeliveredWeight(),
-                request.getDeliveredBirdCount(),
-                retailOrderId,
-                request.getRetailerId(),
-                schedule.getRetailBranchCode(),
-                schedule.getRegionCode(),
-                Timestamp.from(schedule.getOrderDate()));
+        Object[] args = mergeCompleteDeliveryArgs(message, request, retailOrderId, schedule);
+        int updated = jdbcTemplate.update(completeDeliverySql, args);
         if (updated == 0) {
             throw new ResourceNotFoundException("Retail delivery order", retailOrderId);
         }
-        return CompleteRetailDeliveryResponse.builder()
-                .success(true)
-                .status("COMPLETED")
-                .deliveryReference(deliveryReference(retailOrderId))
-                .invoiceStatus("PENDING")
-                .build();
+        return completedDeliveryResponse(retailOrderId, "COMPLETED");
     }
 
-    public Optional<String> findExpectedRetailerOtp(RetailScheduleContext schedule, String retailOrderId) {
+    public RetailRetailerOtpResolution resolveRetailerOtp(RetailScheduleContext schedule, String retailOrderId) {
         RetailOrderRow row = loadOrderRow(schedule, retailOrderId);
-        return extractOtpFromMessage(row.message());
+        return RetailRetailerOtpSupport.resolve(
+                erpProperties.isRetailOrderOtpUseDtlColumn(),
+                row.retailOtp(),
+                row.retailOtpExpiresAt(),
+                row.message(),
+                Instant.now(),
+                erpProperties.getRetailOtpStubCode());
+    }
+
+    public boolean isRetailerOtpVerified(RetailScheduleContext schedule, String retailOrderId) {
+        RetailOrderRow row = loadOrderRow(schedule, retailOrderId);
+        if (erpProperties.isRetailOrderOtpUseDtlColumn()
+                && row.otpVerified() != null
+                && "Y".equalsIgnoreCase(row.otpVerified().trim())) {
+            return true;
+        }
+        return RetailRetailerOtpSupport.isVerifiedInMessage(row.message());
+    }
+
+    public void replaceRetailerOtp(RetailScheduleContext schedule, String retailOrderId, String newOtp) {
+        RetailOrderRow row = loadOrderRow(schedule, retailOrderId);
+        String message = RetailRetailerOtpSupport.upsertOtpInMessage(row.message(), newOtp);
+        Object[] args = mergeRetailOtpReplaceArgs(schedule, retailOrderId, message, newOtp);
+        int updated = jdbcTemplate.update(updateRetailOtpMessageSql, args);
+        if (updated == 0) {
+            throw new ResourceNotFoundException("Retail delivery order", retailOrderId);
+        }
+    }
+
+    public void markRetailerOtpVerified(RetailScheduleContext schedule, String retailOrderId) {
+        RetailOrderRow row = loadOrderRow(schedule, retailOrderId);
+        String message = RetailRetailerOtpSupport.markVerifiedInMessage(row.message());
+        Object[] args = mergeRetailOtpVerifiedArgs(schedule, retailOrderId, message);
+        jdbcTemplate.update(updateRetailOtpVerifiedSql, args);
+    }
+
+    private Object[] mergeRetailOtpReplaceArgs(
+            RetailScheduleContext schedule, String retailOrderId, String message, String newOtp) {
+        List<Object> args = new ArrayList<>();
+        args.add(message);
+        if (erpProperties.isRetailOrderOtpUseDtlColumn()) {
+            args.add(newOtp);
+            args.add(Timestamp.from(Instant.now().plusSeconds(apiV2Properties.getOtpExpiresSeconds())));
+        }
+        args.add(retailOrderId);
+        Object[] scheduleArgs = scheduleBindArgs(schedule);
+        for (Object scheduleArg : scheduleArgs) {
+            args.add(scheduleArg);
+        }
+        return args.toArray();
+    }
+
+    private Object[] mergeRetailOtpVerifiedArgs(
+            RetailScheduleContext schedule, String retailOrderId, String message) {
+        List<Object> args = new ArrayList<>();
+        args.add(message);
+        args.add(retailOrderId);
+        Object[] scheduleArgs = scheduleBindArgs(schedule);
+        for (Object scheduleArg : scheduleArgs) {
+            args.add(scheduleArg);
+        }
+        return args.toArray();
     }
 
     public CompleteRetailDeliveryResponse triggerInvoice(String retailOrderId) {
-        return CompleteRetailDeliveryResponse.builder()
+        return completedDeliveryResponse(retailOrderId, "PENDING");
+    }
+
+    public RetailInvoiceStatusResponse getInvoiceStatus(String retailOrderId) {
+        return RetailInvoiceStatusResponse.builder()
                 .success(true)
-                .status("PENDING")
-                .deliveryReference(deliveryReference(retailOrderId))
+                .syncStatus("PENDING")
                 .invoiceStatus("PENDING")
                 .build();
     }
 
-    public RetailInvoiceStatusResponse getInvoiceStatus(String retailOrderId) {
-        long orderNo = parseOrderNo(retailOrderId);
-        List<RetailInvoiceStatusResponse> rows = jdbcTemplate.query(
-                INVOICE_STATUS_SQL,
-                (rs, rowNum) -> {
-                    String receipt = rs.getString("local_receipt_no");
-                    boolean generated = receipt != null && !receipt.isBlank();
-                    return RetailInvoiceStatusResponse.builder()
-                            .success(true)
-                            .syncStatus(generated ? "SYNCED" : "PENDING")
-                            .invoiceStatus(generated ? "GENERATED" : "PENDING")
-                            .invoiceReference(
-                                    generated ? "INV-" + receipt : null)
-                            .build();
-                },
-                orderNo);
-        if (rows.isEmpty()) {
-            return RetailInvoiceStatusResponse.builder()
-                    .success(true)
-                    .syncStatus("PENDING")
-                    .invoiceStatus("PENDING")
-                    .build();
+    public RetailInvoiceStatusResponse getInvoiceStatus(RetailScheduleContext schedule, String retailOrderId) {
+        try {
+            Object[] args = scheduleBindArgsWithOrder(schedule, retailOrderId);
+            List<RetailInvoiceStatusResponse> rows = jdbcTemplate.query(
+                    invoiceStatusSql,
+                    (rs, rowNum) -> {
+                        String receipt = rs.getString("local_receipt_no");
+                        boolean generated = receipt != null && !receipt.isBlank();
+                        return RetailInvoiceStatusResponse.builder()
+                                .success(true)
+                                .syncStatus(generated ? "SYNCED" : "PENDING")
+                                .invoiceStatus(generated ? "GENERATED" : "PENDING")
+                                .invoiceReference(generated ? "INV-" + receipt : null)
+                                .build();
+                    },
+                    args);
+            if (rows.isEmpty()) {
+                return getInvoiceStatus(retailOrderId);
+            }
+            return rows.get(0);
+        } catch (RuntimeException ex) {
+            return getInvoiceStatus(retailOrderId);
         }
-        return rows.get(0);
     }
 
     private RetailOrderRow loadOrderRow(RetailScheduleContext schedule, String retailOrderId) {
-        Timestamp orderDate = Timestamp.from(schedule.getOrderDate());
         try {
             return jdbcTemplate.queryForObject(
-                    LOAD_NTAIL_BY_ORDER_SQL,
-                    (rs, rowNum) -> mapRow(rs),
-                    retailOrderId,
-                    schedule.getRetailBranchCode(),
-                    schedule.getRegionCode(),
-                    orderDate);
+                    loadRetailOrderByNoSql,
+                    (rs, rowNum) -> this.mapRow(rs),
+                    scheduleBindArgsWithOrder(schedule, retailOrderId));
         } catch (EmptyResultDataAccessException ex) {
             throw new ResourceNotFoundException("Retail delivery order", retailOrderId);
         }
+    }
+
+    /** Secure binds (mutations / get-by-order): scheduleId x2, source, app x2, supervisor x2. */
+    public Object[] scheduleBindArgs(RetailScheduleContext schedule) {
+        return scheduleSecureBindArgs(schedule.getSupervisorCode(), schedule.getScheduleId());
+    }
+
+    /** Read binds for list API: scheduleId x2, source, app x2. */
+    public Object[] scheduleReadBindArgs(String scheduleId) {
+        return new Object[] {
+            scheduleId,
+            scheduleId,
+            erpProperties.getRetailLiftingSource(),
+            erpProperties.getApplicationCode(),
+            erpProperties.getApplicationCode()
+        };
+    }
+
+    public Object[] scheduleSecureBindArgs(String supervisorCode, String scheduleId) {
+        List<Object> args = new ArrayList<>();
+        args.add(scheduleId);
+        args.add(scheduleId);
+        args.add(erpProperties.getRetailLiftingSource());
+        args.add(erpProperties.getApplicationCode());
+        args.add(erpProperties.getApplicationCode());
+        args.addAll(supervisorBindPair(supervisorCode));
+        return args.toArray();
+    }
+
+    private List<Object> supervisorBindPair(String supervisorCode) {
+        List<String> keys = LiftingScheduleSqlClient.supervisorBindKeys(supervisorCode);
+        String primary = keys.get(0);
+        return List.of(primary, primary);
+    }
+
+    private Object[] scheduleBindArgsWithOrder(RetailScheduleContext schedule, String retailOrderId) {
+        Object[] base = scheduleBindArgs(schedule);
+        Object[] args = new Object[base.length + 1];
+        System.arraycopy(base, 0, args, 0, base.length);
+        args[base.length] = retailOrderId;
+        return args;
+    }
+
+    private Object[] mergeUpdateArgs(
+            String message, String retailOrderId, String retailerId, RetailScheduleContext schedule) {
+        Object[] args = new Object[3 + 7];
+        args[0] = message;
+        args[1] = retailOrderId;
+        args[2] = retailerId;
+        System.arraycopy(scheduleBindArgs(schedule), 0, args, 3, 7);
+        return args;
+    }
+
+    private Object[] mergeCompleteDeliveryArgs(
+            String message,
+            CompleteRetailDeliveryRequest request,
+            String retailOrderId,
+            RetailScheduleContext schedule) {
+        Object[] args = new Object[5 + 7];
+        args[0] = message;
+        args[1] = request.getDeliveredWeight();
+        args[2] = request.getDeliveredBirdCount();
+        args[3] = retailOrderId;
+        args[4] = request.getRetailerId();
+        System.arraycopy(scheduleBindArgs(schedule), 0, args, 5, 7);
+        return args;
     }
 
     private void ensureOrderMatchesRetailer(
@@ -358,7 +536,8 @@ public class RetailDeliverySqlClient {
     }
 
     private RetailDeliveryOrderSummaryDto mapSummary(ResultSet rs, String scheduleId) throws SQLException {
-        RetailOrderRow row = mapRow(rs);
+        RetailOrderRow row = this.mapRow(rs);
+        OrderDeliveryPresentation presentation = orderDeliveryPresentation(row);
         return RetailDeliveryOrderSummaryDto.builder()
                 .retailOrderId(row.orderNo())
                 .retailerId(row.customerCode())
@@ -366,12 +545,29 @@ public class RetailDeliverySqlClient {
                 .salesOrderNo(row.orderNo())
                 .orderedQuantity(row.weight())
                 .orderedBirdCount(row.quantity())
-                .status(mapDeliveryStatus(row.uploadedFlag(), row.message()))
+                .deliveryStatus(presentation.deliveryStatus())
+                .deliveryStartedAt(presentation.deliveryStartedAt())
+                .status(presentation.deliveryStatus())
+                .retailerAddress(row.address())
+                .retailerLatitude(nullIfZero(row.latitude()))
+                .retailerLongitude(nullIfZero(row.longitude()))
                 .build();
     }
 
+    private static Double nullIfZero(double value) {
+        return value == 0D ? null : value;
+    }
+
+    /** Re-reads retail order lines for the schedule and returns PENDING / IN_PROGRESS / COMPLETED. */
+    public String aggregateScheduleDeliveryStatus(RetailScheduleContext schedule) {
+        List<RetailDeliveryOrderSummaryDto> orders = listDeliveryOrders(schedule);
+        return RetailOrderDeliveryStatus.aggregateForLiftingOrder(
+                orders.stream().map(RetailDeliveryOrderSummaryDto::getDeliveryStatus).toList());
+    }
+
     private RetailDeliveryOrderDetailDto mapDetail(ResultSet rs, String scheduleId) throws SQLException {
-        RetailOrderRow row = mapRow(rs);
+        RetailOrderRow row = this.mapRow(rs);
+        OrderDeliveryPresentation presentation = orderDeliveryPresentation(row);
         return RetailDeliveryOrderDetailDto.builder()
                 .retailOrderId(row.orderNo())
                 .scheduleId(scheduleId)
@@ -383,13 +579,38 @@ public class RetailDeliverySqlClient {
                 .itemName(row.itemName())
                 .orderedQuantity(row.weight())
                 .orderedBirdCount(row.quantity())
-                .status(mapDeliveryStatus(row.uploadedFlag(), row.message()))
+                .deliveryStatus(presentation.deliveryStatus())
+                .deliveryStartedAt(presentation.deliveryStartedAt())
+                .status(presentation.deliveryStatus())
                 .branchCode(row.branchCode())
                 .regionCode(row.regionCode())
                 .build();
     }
 
-    private static RetailOrderRow mapRow(ResultSet rs) throws SQLException {
+    private OrderDeliveryPresentation orderDeliveryPresentation(RetailOrderRow row) {
+        String deliveryStatus = RetailOrderDeliveryStatus.resolveForOrder(
+                row.delvStatus(),
+                erpProperties.isRetailOrderDeliveryStatusEnabled(),
+                row.uploadedFlag(),
+                row.message(),
+                row.deliveryStartedAt());
+        Instant started = row.deliveryStartedAt();
+        if (started == null) {
+            started = DeliveryOrderMessageSupport.parseDeliveryStartedAt(row.message());
+        }
+        return new OrderDeliveryPresentation(deliveryStatus, formatDeliveryStartedAt(started));
+    }
+
+    private static String formatDeliveryStartedAt(Instant started) {
+        if (started == null) {
+            return null;
+        }
+        return DateTimeFormatter.ISO_INSTANT.format(started.atOffset(ZoneOffset.UTC));
+    }
+
+    private record OrderDeliveryPresentation(String deliveryStatus, String deliveryStartedAt) {}
+
+    private RetailOrderRow mapRow(ResultSet rs) throws SQLException {
         return new RetailOrderRow(
                 rs.getString("order_no"),
                 rs.getString("customer_code"),
@@ -402,7 +623,24 @@ public class RetailDeliverySqlClient {
                 rs.getString("region"),
                 rs.getString("customer_name"),
                 rs.getString("mobile_no"),
-                rs.getString("address"));
+                rs.getString("address"),
+                rs.getDouble("retailer_latitude"),
+                rs.getDouble("retailer_longitude"),
+                rs.getString("delv_status"),
+                readDeliveryStartedInstant(rs),
+                rs.getString("retail_otp"),
+                readOtpExpiresInstant(rs),
+                rs.getString("otp_verified"));
+    }
+
+    private static Instant readOtpExpiresInstant(ResultSet rs) throws SQLException {
+        Timestamp ts = rs.getTimestamp("otp_expires_at");
+        return ts == null ? null : ts.toInstant();
+    }
+
+    private static Instant readDeliveryStartedInstant(ResultSet rs) throws SQLException {
+        Timestamp ts = rs.getTimestamp("delivery_started_date");
+        return ts == null ? null : ts.toInstant();
     }
 
     static String resolveRetailBranchCode(String cusLocation) {
@@ -417,14 +655,14 @@ public class RetailDeliverySqlClient {
         return trimmed;
     }
 
-    static String mapDeliveryStatus(String uploadedFlag, String message) {
-        if ("Y".equalsIgnoreCase(uploadedFlag)) {
-            return "COMPLETED";
-        }
-        if (message != null && message.toUpperCase(Locale.ROOT).startsWith("ARRIVED")) {
-            return "ARRIVED";
-        }
-        return "PENDING_DELIVERY";
+    private static CompleteRetailDeliveryResponse completedDeliveryResponse(
+            String retailOrderId, String status) {
+        return CompleteRetailDeliveryResponse.builder()
+                .success(true)
+                .status(status)
+                .deliveryReference(deliveryReference(retailOrderId))
+                .invoiceStatus("PENDING")
+                .build();
     }
 
     static String deliveryReference(String retailOrderId) {
@@ -452,21 +690,6 @@ public class RetailDeliverySqlClient {
         return message != null && message.contains("IDEMPOTENCY:" + idempotencyKey + "|");
     }
 
-    static Optional<String> extractOtpFromMessage(String message) {
-        if (message == null) {
-            return Optional.empty();
-        }
-        String upper = message.toUpperCase(Locale.ROOT);
-        int idx = upper.indexOf("RETAIL_OTP:");
-        if (idx < 0) {
-            return Optional.empty();
-        }
-        String tail = message.substring(idx + "RETAIL_OTP:".length());
-        int end = tail.indexOf('|');
-        String otp = (end > 0 ? tail.substring(0, end) : tail).trim();
-        return otp.isEmpty() ? Optional.empty() : Optional.of(otp);
-    }
-
     private static Long readLong(ResultSet rs, String column) throws SQLException {
         long value = rs.getLong(column);
         return rs.wasNull() ? null : value;
@@ -492,5 +715,12 @@ public class RetailDeliverySqlClient {
             String regionCode,
             String customerName,
             String mobileNo,
-            String address) {}
+            String address,
+            double latitude,
+            double longitude,
+            String delvStatus,
+            Instant deliveryStartedAt,
+            String retailOtp,
+            Instant retailOtpExpiresAt,
+            String otpVerified) {}
 }

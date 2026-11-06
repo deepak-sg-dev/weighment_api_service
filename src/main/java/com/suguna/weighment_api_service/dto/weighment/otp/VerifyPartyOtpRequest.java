@@ -6,7 +6,13 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
 
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 @Getter
 @Setter
 public class VerifyPartyOtpRequest {
@@ -21,4 +27,7 @@ public class VerifyPartyOtpRequest {
     @NotBlank
     @Pattern(regexp = "^[0-9]{4,8}$", message = "otp must be 4 to 8 digits")
     private String otp;
+
+    /** Required when {@link #partyType} is {@link PartyType#CUSTOMER} (retail shop line / delivery id). */
+    private String deliveryId;
 }

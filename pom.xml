@@ -29,6 +29,10 @@
 	</scm>
 	<properties>
 		<java.version>17</java.version>
+		<!-- 1.18.36 breaks on JDK 24+ (TypeTag UNKNOWN); 1.18.48 supports JDK 26 (IntelliJ bundled javac) -->
+		<lombok.version>1.18.48</lombok.version>
+		<!-- Eclipse/Cursor JDT: run Maven annotation processors (Lombok) on import -->
+		<m2e.apt.activation>jdt_apt</m2e.apt.activation>
 		<!-- compile = run from IDE/main(); provided = WAR on external Tomcat -->
 		<tomcat.scope>compile</tomcat.scope>
 	</properties>
@@ -83,6 +87,7 @@
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
+			<version>${lombok.version}</version>
 			<optional>true</optional>
 		</dependency>
 
@@ -112,10 +117,12 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
 				<configuration>
+					<release>${java.version}</release>
 					<annotationProcessorPaths>
 						<path>
 							<groupId>org.projectlombok</groupId>
 							<artifactId>lombok</artifactId>
+							<version>${lombok.version}</version>
 						</path>
 					</annotationProcessorPaths>
 				</configuration>

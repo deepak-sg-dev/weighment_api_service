@@ -1,8 +1,11 @@
 package com.suguna.weighment_api_service.integration.oracle;
 
+import com.suguna.weighment_api_service.config.OracleErpProperties;
+import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentRequest;
 import com.suguna.weighment_api_service.dto.transaction.SubmitCompletedWeighmentRequest;
 import com.suguna.weighment_api_service.dto.transaction.SubmitCompletedWeighmentRequest.WeighmentEntry;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
+import com.suguna.weighment_api_service.util.WeighmentEntryCategory;
 import com.suguna.weighment_api_service.util.WeighmentSubmitKeys;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -18,15 +21,11 @@ import java.util.Optional;
 public class WeighmentDetailSqlClient {
 
     static final String TXN_PHASE_LIFTING_COMPLETE = "LIFTING_COMPLETE";
+    static final String TXN_PHASE_DELIVERY_COMPLETE = "DELIVERY_COMPLETE";
     static final String HEADER_REF_WEIGHMENT_TRANS = "WEIGHMENT_TRANS";
+    static final String HEADER_REF_RETAIL_ORDER = "RETAIL_ORDER";
     static final int STATUS_ACTIVE = 1;
     static final int SUBMIT_BATCH_NO = 1;
-
-    private static final String WEIGHMENT_SUPERVISOR_MATCH =
-            """
-             (TRIM(w.wm_supervisor_code) = TRIM(?)
-              OR LTRIM(TRIM(w.wm_supervisor_code), '0') = LTRIM(TRIM(?), '0'))
-            """;
 
     private static final String RESOLVE_TRANS_ID_SQL =
             """
@@ -35,8 +34,9 @@ public class WeighmentDetailSqlClient {
              WHERE """
             + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
             + """
-               AND """
-            + WEIGHMENT_SUPERVISOR_MATCH;
+             ORDER BY w.updated_date DESC NULLS LAST
+             FETCH FIRST 1 ROW ONLY
+            """;
 
     private static final String RESOLVE_LIFTING_SOURCE_SQL =
             """
@@ -54,63 +54,76 @@ public class WeighmentDetailSqlClient {
                AND d.submit_batch_no = ?
             """;
 
-    private static final String INSERT_DTL_SQL =
-            """
-            INSERT INTO sug_mai_birds_weighment_dtl (
-                dtl_id,
-                business_module,
-                txn_phase,
-                header_ref_type,
-                header_ref_id,
-                schedule_no,
-                trans_id,
-                retail_order_no,
-                retailer_code,
-                wm_supervisor_code,
-                local_transaction_id,
-                submit_batch_no,
-                line_sequence,
-                cage_or_set_ref,
-                birds_applied,
-                birds_adjusted,
-                adjustment_reason,
-                tare_wt,
-                gross_wt,
-                net_wt,
-                avg_bird_wt,
-                tolerance_status,
-                captured_at,
-                event_at,
-                capture_lat,
-                capture_long,
-                capture_accuracy_m,
-                scale_no,
-                device_id,
-                row_status,
-                ext_json,
-                status,
-                created_by,
-                creation_date
-            ) VALUES (
-                sug_mai_birds_weighment_dtl_seq.NEXTVAL,
-                ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, SYSDATE
-            )
-            """;
-
     private final JdbcTemplate jdbcTemplate;
+    private final OracleErpProperties erpProperties;
+    private final String insertDtlSql;
+    private final String listDtlSql;
 
-    public WeighmentDetailSqlClient(JdbcTemplate jdbcTemplate) {
+    public WeighmentDetailSqlClient(JdbcTemplate jdbcTemplate, OracleErpProperties erpProperties) {
         this.jdbcTemplate = jdbcTemplate;
+        this.erpProperties = erpProperties;
+        this.insertDtlSql = buildInsertDtlSql(erpProperties);
+        this.listDtlSql = buildListDtlSql(erpProperties);
     }
 
     public boolean hasDetailLines(String scheduleTransactionKey) {
+        return hasDetailLinesForPhase(scheduleTransactionKey, TXN_PHASE_LIFTING_COMPLETE);
+    }
+
+    public boolean hasDeliveryDetailLines(String deliveryTransactionKey) {
+        return hasDetailLinesForPhase(deliveryTransactionKey, TXN_PHASE_DELIVERY_COMPLETE);
+    }
+
+    private boolean hasDetailLinesForPhase(String localTransactionId, String txnPhase) {
         Integer count = jdbcTemplate.queryForObject(
                 COUNT_DTL_SQL,
                 Integer.class,
+                localTransactionId,
+                txnPhase,
+                SUBMIT_BATCH_NO);
+        return count != null && count > 0;
+    }
+
+    public List<StoredWeighmentDetailLine> listLiftingCompleteLines(String scheduleTransactionKey) {
+        return jdbcTemplate.query(
+                listDtlSql,
+                (rs, rowNum) -> mapStoredDetailLine(rs),
                 scheduleTransactionKey,
                 TXN_PHASE_LIFTING_COMPLETE,
                 SUBMIT_BATCH_NO);
-        return count != null && count > 0;
+    }
+
+    public List<StoredWeighmentDetailLine> listDeliveryCompleteLines(String deliveryTransactionKey) {
+        return jdbcTemplate.query(
+                listDtlSql,
+                (rs, rowNum) -> mapStoredDetailLine(rs),
+                deliveryTransactionKey,
+                TXN_PHASE_DELIVERY_COMPLETE,
+                SUBMIT_BATCH_NO);
+    }
+
+    private StoredWeighmentDetailLine mapStoredDetailLine(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new StoredWeighmentDetailLine(
+                rs.getString("dtl_id"),
+                getInteger(rs, "line_sequence"),
+                rs.getString("category"),
+                getInteger(rs, "birds_applied"),
+                getDouble(rs, "tare_wt"),
+                getDouble(rs, "gross_wt"),
+                getDouble(rs, "net_wt"),
+                getDouble(rs, "avg_bird_wt"),
+                getDouble(rs, "live_reading_avg"),
+                parseWeightDifference(rs.getString("tolerance_status")),
+                rs.getString("row_status"),
+                rs.getTimestamp("captured_at"),
+                rs.getTimestamp("event_at"),
+                getDouble(rs, "capture_lat"),
+                getDouble(rs, "capture_long"),
+                getDouble(rs, "capture_accuracy_m"),
+                rs.getString("scale_no"),
+                rs.getString("device_id"),
+                rs.getString("ext_json"),
+                rs.getTimestamp("creation_date"));
     }
 
     public Optional<Long> resolveTransId(String scheduleId, String supervisorCode) {
@@ -119,9 +132,7 @@ public class WeighmentDetailSqlClient {
                 RESOLVE_TRANS_ID_SQL,
                 (rs, rowNum) -> rs.getLong("trans_id"),
                 normalizedScheduleId,
-                normalizedScheduleId,
-                supervisorCode,
-                supervisorCode);
+                normalizedScheduleId);
         return ids.stream().findFirst();
     }
 
@@ -151,43 +162,275 @@ public class WeighmentDetailSqlClient {
         List<WeighmentEntry> entries = request.getWeighmentEntries();
         for (int i = 0; i < entries.size(); i++) {
             WeighmentEntry entry = entries.get(i);
-            String category = normalizeCategory(entry.getCategory());
-            boolean adjusted = !"NORMAL".equals(category);
-            batch.add(new Object[] {
-                mapBusinessModule(businessModule),
-                TXN_PHASE_LIFTING_COMPLETE,
-                HEADER_REF_WEIGHMENT_TRANS,
-                headerRefId,
-                scheduleNo,
-                transId,
-                supervisorCode,
-                scheduleTransactionKey,
-                SUBMIT_BATCH_NO,
-                entry.getSequence(),
-                category,
-                entry.getBirdsApplied(),
-                adjusted ? "Y" : "N",
-                adjusted ? category : null,
-                deriveTare(entry),
-                entry.getGross(),
-                entry.getNet(),
-                entry.getAverageBirdWeight(),
-                entry.getWeightDifference() == null ? null : String.valueOf(entry.getWeightDifference()),
-                toTimestamp(entry.getStartTime()),
-                toTimestamp(entry.getEndTime()),
-                captureLat,
-                captureLong,
-                accuracy,
-                scaleDeviceId,
-                request.getDeviceId(),
-                mapRowStatus(entry.getStatus()),
-                WeighmentDtlHistoryJson.entryJson(request, entry, i == 0),
-                STATUS_ACTIVE,
-                null
-            });
+            String category = WeighmentEntryCategory.normalize(entry.getCategory());
+            boolean adjusted = WeighmentEntryCategory.requiresBirdAdjustment(category);
+            int lineSequence = entry.getSequence() != null ? entry.getSequence() : i + 1;
+            String extJson = truncateExtJson(
+                    WeighmentDtlHistoryJson.entryJson(request, entry, i == 0));
+            batch.add(buildDetailInsertRow(
+                    mapBusinessModule(businessModule),
+                    TXN_PHASE_LIFTING_COMPLETE,
+                    HEADER_REF_WEIGHMENT_TRANS,
+                    headerRefId,
+                    scheduleNo,
+                    transId,
+                    null,
+                    null,
+                    supervisorCode,
+                    scheduleTransactionKey,
+                    SUBMIT_BATCH_NO,
+                    lineSequence,
+                    category,
+                    entry,
+                    adjusted,
+                    captureLat,
+                    captureLong,
+                    accuracy,
+                    scaleDeviceId,
+                    request.getDeviceId(),
+                    extJson));
         }
 
-        jdbcTemplate.batchUpdate(INSERT_DTL_SQL, batch);
+        jdbcTemplate.batchUpdate(insertDtlSql, batch);
+    }
+
+    /** {@code EXT_JSON} is CLOB-capable but keep a safe cap for VARCHAR2-backed columns. */
+    private static String truncateExtJson(String json) {
+        if (json == null) {
+            return null;
+        }
+        return json.length() <= 3900 ? json : json.substring(0, 3900);
+    }
+
+    public void insertDeliveryWeighmentDetails(
+            String supervisorCode,
+            String scheduleId,
+            long transId,
+            String retailOrderNo,
+            String retailerCode,
+            String deliveryTransactionKey,
+            SubmitDeliveryWeighmentRequest request) {
+
+        if (hasDeliveryDetailLines(deliveryTransactionKey)) {
+            return;
+        }
+
+        List<WeighmentEntry> entries = request.getWeighmentEntries();
+        if (entries == null || entries.isEmpty()) {
+            throw new IllegalStateException("Delivery weighment requires at least one weighmentEntries row");
+        }
+
+        SubmitDeliveryWeighmentRequest.ShopValidation shop = request.getShopValidation();
+        SubmitCompletedWeighmentRequest.ScaleInfo scale = request.getScale();
+        String scaleDeviceId = scale == null ? null : scale.getDeviceId();
+        Double captureLat = shop == null ? null : shop.getLatitude();
+        Double captureLong = shop == null ? null : shop.getLongitude();
+
+        Long scheduleNo = ScheduleIdSupport.parseErpIndentAsLong(scheduleId);
+        String headerRefId = retailOrderNo == null ? "" : retailOrderNo.trim();
+        String retailer = retailerCode == null ? null : retailerCode.trim();
+        Long retailOrderNumeric = parseRetailOrderNo(retailOrderNo);
+
+        List<Object[]> batch = new ArrayList<>();
+        for (int i = 0; i < entries.size(); i++) {
+            WeighmentEntry entry = entries.get(i);
+            String category = WeighmentEntryCategory.normalize(entry.getCategory());
+            boolean adjusted = WeighmentEntryCategory.requiresBirdAdjustment(category);
+            batch.add(buildDetailInsertRow(
+                    "RETAIL",
+                    TXN_PHASE_DELIVERY_COMPLETE,
+                    HEADER_REF_RETAIL_ORDER,
+                    headerRefId,
+                    scheduleNo,
+                    transId,
+                    retailOrderNumeric,
+                    retailer,
+                    supervisorCode,
+                    deliveryTransactionKey,
+                    SUBMIT_BATCH_NO,
+                    entry.getSequence(),
+                    category,
+                    entry,
+                    adjusted,
+                    captureLat,
+                    captureLong,
+                    null,
+                    scaleDeviceId,
+                    request.getDeviceId(),
+                    WeighmentDtlHistoryJson.deliveryEntryJson(request, entry, i == 0)));
+        }
+
+        jdbcTemplate.batchUpdate(insertDtlSql, batch);
+    }
+
+    private Object[] buildDetailInsertRow(
+            String businessModule,
+            String txnPhase,
+            String headerRefType,
+            String headerRefId,
+            Long scheduleNo,
+            long transId,
+            Long retailOrderNo,
+            String retailerCode,
+            String supervisorCode,
+            String localTransactionId,
+            int submitBatchNo,
+            Integer lineSequence,
+            String category,
+            WeighmentEntry entry,
+            boolean adjusted,
+            Double captureLat,
+            Double captureLong,
+            Double captureAccuracyM,
+            String scaleDeviceId,
+            String deviceId,
+            String extJson) {
+        List<Object> args = new ArrayList<>(32);
+        args.add(businessModule);
+        args.add(txnPhase);
+        args.add(headerRefType);
+        args.add(headerRefId);
+        args.add(scheduleNo);
+        args.add(transId);
+        args.add(retailOrderNo);
+        args.add(retailerCode);
+        args.add(supervisorCode);
+        args.add(localTransactionId);
+        args.add(submitBatchNo);
+        args.add(lineSequence);
+        args.add(category);
+        args.add(entry.getBirdsApplied());
+        args.add(adjusted ? "Y" : "N");
+        args.add(adjusted ? category : null);
+        args.add(deriveTare(entry));
+        args.add(entry.getGross());
+        args.add(entry.getNet());
+        args.add(entry.getAverageBirdWeight());
+        if (erpProperties.isWeighmentLiveReadingAvgEnabled()) {
+            args.add(entry.getLiveReadingsAverage());
+        }
+        args.add(entry.getWeightDifference() == null ? null : String.valueOf(entry.getWeightDifference()));
+        args.add(toTimestamp(entry.getStartTime()));
+        args.add(toTimestamp(entry.getEndTime()));
+        args.add(captureLat);
+        args.add(captureLong);
+        args.add(captureAccuracyM);
+        args.add(scaleDeviceId);
+        args.add(deviceId);
+        args.add(mapRowStatus(entry.getStatus()));
+        args.add(extJson);
+        args.add(STATUS_ACTIVE);
+        args.add(null);
+        return args.toArray();
+    }
+
+    static String buildInsertDtlSql(OracleErpProperties erpProperties) {
+        String liveAvgColumnLine = "";
+        String liveAvgValueLine = "";
+        if (erpProperties.isWeighmentLiveReadingAvgEnabled()) {
+            String col = RetailDeliverySqlClient.sanitizeOracleColumnName(
+                    erpProperties.getWeighmentLiveReadingAvgColumn(), "LIVE_READING_AVG");
+            liveAvgColumnLine = "\n                " + col + ",";
+            liveAvgValueLine = "\n                ?,";
+        }
+        return """
+            INSERT INTO sug_mai_birds_weighment_dtl (
+                dtl_id,
+                business_module,
+                txn_phase,
+                header_ref_type,
+                header_ref_id,
+                schedule_no,
+                trans_id,
+                retail_order_no,
+                retailer_code,
+                wm_supervisor_code,
+                local_transaction_id,
+                submit_batch_no,
+                line_sequence,
+                cage_or_set_ref,
+                birds_applied,
+                birds_adjusted,
+                adjustment_reason,
+                tare_wt,
+                gross_wt,
+                net_wt,
+                avg_bird_wt,"""
+                + liveAvgColumnLine
+                + """
+                tolerance_status,
+                captured_at,
+                event_at,
+                capture_lat,
+                capture_long,
+                capture_accuracy_m,
+                scale_no,
+                device_id,
+                row_status,
+                ext_json,
+                status,
+                created_by,
+                creation_date
+            ) VALUES (
+                sug_mai_birds_weighment_dtl_seq.NEXTVAL,
+                ?, ?, ?, ?, ?, ?,
+                ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"""
+                + liveAvgValueLine
+                + """
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                SYSDATE
+            )
+            """;
+    }
+
+    static String buildListDtlSql(OracleErpProperties erpProperties) {
+        String liveAvgSelect = erpProperties.isWeighmentLiveReadingAvgEnabled()
+                ? "                   d."
+                        + RetailDeliverySqlClient.sanitizeOracleColumnName(
+                                erpProperties.getWeighmentLiveReadingAvgColumn(), "LIVE_READING_AVG")
+                        + " AS live_reading_avg,\n"
+                : "                   CAST(NULL AS NUMBER) AS live_reading_avg,\n";
+        return """
+            SELECT TO_CHAR(d.dtl_id) AS dtl_id,
+                   d.line_sequence,
+                   d.cage_or_set_ref AS category,
+                   d.birds_applied,
+                   d.tare_wt,
+                   d.gross_wt,
+                   d.net_wt,
+                   d.avg_bird_wt,
+            """
+                + liveAvgSelect
+                + """
+                   d.tolerance_status,
+                   d.row_status,
+                   d.captured_at,
+                   d.event_at,
+                   d.capture_lat,
+                   d.capture_long,
+                   d.capture_accuracy_m,
+                   d.scale_no,
+                   d.device_id,
+                   d.ext_json,
+                   d.creation_date
+              FROM sug_mai_birds_weighment_dtl d
+             WHERE d.local_transaction_id = TRIM(?)
+               AND d.txn_phase = ?
+               AND d.submit_batch_no = ?
+             ORDER BY d.line_sequence ASC, d.dtl_id ASC
+            """;
+    }
+
+    private static Long parseRetailOrderNo(String retailOrderNo) {
+        if (retailOrderNo == null || retailOrderNo.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(retailOrderNo.trim().replaceAll("\\D", ""));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     public String resolveBusinessModule(String scheduleId, String saleType, String birdType) {
@@ -228,13 +471,6 @@ public class WeighmentDetailSqlClient {
         return module == null || module.isBlank() ? "LIFTING" : module.trim().toUpperCase(Locale.ROOT);
     }
 
-    private static String normalizeCategory(String category) {
-        if (category == null || category.isBlank()) {
-            return "NORMAL";
-        }
-        return category.trim().toUpperCase(Locale.ROOT);
-    }
-
     private static String mapRowStatus(String status) {
         if (status != null && "ABORTED".equalsIgnoreCase(status.trim())) {
             return "ABORTED";
@@ -252,4 +488,47 @@ public class WeighmentDetailSqlClient {
     private static Timestamp toTimestamp(Instant instant) {
         return instant == null ? null : Timestamp.from(instant);
     }
+
+    private static Double getDouble(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        double value = rs.getDouble(column);
+        return rs.wasNull() ? null : value;
+    }
+
+    private static Integer getInteger(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        int value = rs.getInt(column);
+        return rs.wasNull() ? null : value;
+    }
+
+    private static Double parseWeightDifference(String toleranceStatus) {
+        if (toleranceStatus == null || toleranceStatus.isBlank()) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(toleranceStatus.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    public record StoredWeighmentDetailLine(
+            String dtlId,
+            Integer lineSequence,
+            String category,
+            Integer birdsApplied,
+            Double tareWt,
+            Double grossWt,
+            Double netWt,
+            Double avgBirdWt,
+            Double liveReadingAvg,
+            Double weightDifference,
+            String rowStatus,
+            Timestamp capturedAt,
+            Timestamp eventAt,
+            Double captureLat,
+            Double captureLong,
+            Double captureAccuracyM,
+            String scaleNo,
+            String deviceId,
+            String extJson,
+            Timestamp creationDate) {}
 }
