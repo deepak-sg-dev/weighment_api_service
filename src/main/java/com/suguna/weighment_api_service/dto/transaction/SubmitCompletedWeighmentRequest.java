@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -39,6 +40,18 @@ public class SubmitCompletedWeighmentRequest {
     private VehicleInfo vehicle;
 
     private Double plannedQuantity;
+
+    /**
+     * Count of healthy birds at farm (required for RETAIL lifting completion per product rules).
+     */
+    private Integer healthyBirdsCount;
+
+    /**
+     * Feed stock at farm: use {@link FeedStockInfo#amount} for quantity (e.g. 0.5, 1, 2) and {@link FeedStockInfo#unit}
+     * for measure ({@code KG}, {@code BAG}, etc.). Required for RETAIL lifting completion.
+     */
+    @Valid
+    private FeedStockInfo feedStock;
 
     @NotEmpty
     @JsonProperty("weighmentEntries")
@@ -137,6 +150,22 @@ public class SubmitCompletedWeighmentRequest {
         this.plannedQuantity = plannedQuantity;
     }
 
+    public Integer getHealthyBirdsCount() {
+        return healthyBirdsCount;
+    }
+
+    public void setHealthyBirdsCount(Integer healthyBirdsCount) {
+        this.healthyBirdsCount = healthyBirdsCount;
+    }
+
+    public FeedStockInfo getFeedStock() {
+        return feedStock;
+    }
+
+    public void setFeedStock(FeedStockInfo feedStock) {
+        this.feedStock = feedStock;
+    }
+
     public List<WeighmentEntry> getWeighmentEntries() {
         return weighmentEntries;
     }
@@ -181,6 +210,32 @@ public class SubmitCompletedWeighmentRequest {
 
     public String effectiveSaleType() {
         return saleType == null ? null : saleType.trim();
+    }
+
+    /**
+     * Feed quantity and unit at farm (lifting). Amount supports decimals (e.g. 0.5 kg); unit is a free-form code such as
+     * {@code KG} or {@code BAG}.
+     */
+    public static class FeedStockInfo {
+        private BigDecimal amount;
+        /** e.g. KG, BAG */
+        private String unit;
+
+        public BigDecimal getAmount() {
+            return amount;
+        }
+
+        public void setAmount(BigDecimal amount) {
+            this.amount = amount;
+        }
+
+        public String getUnit() {
+            return unit;
+        }
+
+        public void setUnit(String unit) {
+            this.unit = unit;
+        }
     }
 
     public static class ScaleInfo {

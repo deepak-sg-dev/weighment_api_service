@@ -65,6 +65,10 @@ final class WeighmentDtlHistoryJson {
                 if (request.getPlannedQuantity() != null) {
                     root.put("plannedQuantity", request.getPlannedQuantity());
                 }
+                if (request.getHealthyBirdsCount() != null) {
+                    root.put("healthyBirdsCount", request.getHealthyBirdsCount());
+                }
+                root.set("feedStock", MAPPER.valueToTree(request.getFeedStock()));
                 root.set("scale", MAPPER.valueToTree(request.getScale()));
                 root.set("farmValidation", MAPPER.valueToTree(request.getFarmValidation()));
                 root.set("vehicle", MAPPER.valueToTree(request.getVehicle()));

@@ -27,11 +27,14 @@ import com.suguna.weighment_api_service.repository.TransactionRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.config.ApiV2Properties;
 import com.suguna.weighment_api_service.constants.WeighmentWorkflowStep;
+import com.suguna.weighment_api_service.dto.transaction.SubmitCompletedWeighmentRequest.FeedStockInfo;
 import com.suguna.weighment_api_service.dto.transaction.SubmitCompletedWeighmentRequest.WeighmentEntry;
 import com.suguna.weighment_api_service.util.LiveReadingValidation;
 import com.suguna.weighment_api_service.util.WeighmentEntryCategory;
 import com.suguna.weighment_api_service.util.WeighmentSubmitKeys;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -89,6 +92,7 @@ public class TransactionService {
         validateWeighmentEntries(scheduleId, request.getWeighmentEntries());
         String submissionSaleType = resolveSubmissionSaleType(schedule, request);
         validateSubmissionEvidence(submissionSaleType, scheduleId, request);
+        validateRetailLiftingFarmMetrics(submissionSaleType, request);
         validateWeighmentTotals(request.getTotals());
 
         String transactionKey = WeighmentSubmitKeys.transactionKey(scheduleId);
@@ -242,5 +246,44 @@ public class TransactionService {
             return fromRequest;
         }
         return retailEnrichmentService.resolveSaleType(schedule.getOrderSource());
+    }
+
+    /**
+     * RETAIL lifting submissions must include healthy bird count and feed stock (amount + unit). Wholesale may omit.
+     */
+    private void validateRetailLiftingFarmMetrics(String saleType, SubmitCompletedWeighmentRequest request) {
+        if (saleType == null || !"RETAIL".equalsIgnoreCase(saleType.trim())) {
+            return;
+        }
+        if (request.getHealthyBirdsCount() == null) {
+            throw new BusinessValidationException(
+                    ErrorCodes.VALIDATION_PENDING, "healthyBirdsCount is required for RETAIL lifting completion");
+        }
+        if (request.getHealthyBirdsCount() < 0) {
+            throw new BusinessValidationException(
+                    ErrorCodes.VALIDATION_PENDING, "healthyBirdsCount must be zero or positive");
+        }
+        FeedStockInfo feed = request.getFeedStock();
+        if (feed == null) {
+            throw new BusinessValidationException(
+                    ErrorCodes.VALIDATION_PENDING, "feedStock is required for RETAIL lifting completion");
+        }
+        if (feed.getAmount() == null) {
+            throw new BusinessValidationException(
+                    ErrorCodes.VALIDATION_PENDING, "feedStock.amount is required for RETAIL lifting completion");
+        }
+        if (feed.getAmount().compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessValidationException(ErrorCodes.VALIDATION_PENDING, "feedStock.amount must be non-negative");
+        }
+        if (feed.getUnit() == null || feed.getUnit().isBlank()) {
+            throw new BusinessValidationException(
+                    ErrorCodes.VALIDATION_PENDING,
+                    "feedStock.unit is required (e.g. KG or BAG) for RETAIL lifting completion");
+        }
+        String unit = feed.getUnit().trim();
+        if (unit.length() > 32) {
+            throw new BusinessValidationException(ErrorCodes.VALIDATION_PENDING, "feedStock.unit must be at most 32 characters");
+        }
+        feed.setUnit(unit.toUpperCase(Locale.ROOT));
     }
 }

@@ -12,6 +12,7 @@ import com.suguna.weighment_api_service.integration.oracle.WeighmentDetailSqlCli
 import com.suguna.weighment_api_service.integration.oracle.TransactionSqlClient;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -96,6 +97,13 @@ public class WeighmentSubmissionMapper {
             if (headerJson.has("plannedQuantity") && !headerJson.get("plannedQuantity").isNull()) {
                 request.setPlannedQuantity(headerJson.get("plannedQuantity").asDouble());
             }
+            if (headerJson.has("healthyBirdsCount") && !headerJson.get("healthyBirdsCount").isNull()) {
+                request.setHealthyBirdsCount(headerJson.get("healthyBirdsCount").asInt());
+            }
+            if (headerJson.has("feedStock") && !headerJson.get("feedStock").isNull()) {
+                request.setFeedStock(
+                        readTree(headerJson.get("feedStock"), SubmitCompletedWeighmentRequest.FeedStockInfo.class));
+            }
             request.setScale(readTree(headerJson.get("scale"), SubmitCompletedWeighmentRequest.ScaleInfo.class));
             request.setFarmValidation(
                     readTree(headerJson.get("farmValidation"), SubmitCompletedWeighmentRequest.FarmValidation.class));
@@ -119,6 +127,7 @@ public class WeighmentSubmissionMapper {
         request.setTotals(rebuildTotals(header));
         mergeCompletionFromHeader(request, header);
         mergeFarmCaptureFromHeader(request, header);
+        mergeBirdStockFromHeader(request, header);
         if (request.getVehicle() == null && header.vehicleNo() != null) {
             SubmitCompletedWeighmentRequest.VehicleInfo vehicle = new SubmitCompletedWeighmentRequest.VehicleInfo();
             vehicle.setRegistrationNumber(header.vehicleNo());
@@ -266,6 +275,23 @@ public class WeighmentSubmissionMapper {
         }
         if (farm.getCapturedLongitude() == null) {
             farm.setCapturedLongitude(header.longitude());
+        }
+    }
+
+    /** Prefer JSON from first line; fill healthy bird count and feed quantity from ERP header columns when missing. */
+    private static void mergeBirdStockFromHeader(
+            SubmitCompletedWeighmentRequest request, SubmissionHeaderSnapshot header) {
+        if (request.getHealthyBirdsCount() == null && header.birdStockNos() != null) {
+            request.setHealthyBirdsCount(header.birdStockNos());
+        }
+        if ((request.getFeedStock() == null || request.getFeedStock().getAmount() == null)
+                && header.feedStockBags() != null) {
+            SubmitCompletedWeighmentRequest.FeedStockInfo feed =
+                    request.getFeedStock() != null
+                            ? request.getFeedStock()
+                            : new SubmitCompletedWeighmentRequest.FeedStockInfo();
+            feed.setAmount(BigDecimal.valueOf(header.feedStockBags()));
+            request.setFeedStock(feed);
         }
     }
 }

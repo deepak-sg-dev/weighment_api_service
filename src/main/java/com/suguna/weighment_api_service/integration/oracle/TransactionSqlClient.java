@@ -12,6 +12,7 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -76,6 +77,8 @@ public class TransactionSqlClient {
                    w.status = ?,
                    w.manual_dc_no = ?,
                    w.remarks = ?,
+                   w.bird_stock_nos = NVL(?, w.bird_stock_nos),
+                   w.feed_stock_bags = NVL(?, w.feed_stock_bags),
                    w.errorcount = 0,
                    w.abortcount = 0,
                    w.updated_date = SYSDATE
@@ -101,7 +104,9 @@ public class TransactionSqlClient {
                    w.scale_no,
                    w.wm_start_time,
                    w.wm_end_time,
-                   w.vehicle_outtime
+                   w.vehicle_outtime,
+                   w.bird_stock_nos,
+                   w.feed_stock_bags
               FROM sug_mai_birds_weighment w
              WHERE """
             + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
@@ -190,7 +195,9 @@ public class TransactionSqlClient {
                         rs.getString("scale_no"),
                         rs.getTimestamp("wm_start_time"),
                         rs.getTimestamp("wm_end_time"),
-                        rs.getTimestamp("vehicle_outtime")),
+                        rs.getTimestamp("vehicle_outtime"),
+                        getInteger(rs, "bird_stock_nos"),
+                        getDouble(rs, "feed_stock_bags")),
                 normalizedScheduleId,
                 normalizedScheduleId);
         return rows.stream().findFirst();
@@ -210,8 +217,11 @@ public class TransactionSqlClient {
     }
 
     private static Integer getInteger(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
-        int value = rs.getInt(column);
-        return rs.wasNull() ? null : value;
+        java.math.BigDecimal bd = rs.getBigDecimal(column);
+        if (bd == null || rs.wasNull()) {
+            return null;
+        }
+        return bd.intValue();
     }
 
     public SubmitCompletedWeighmentResponse submitCompleted(
@@ -222,6 +232,12 @@ public class TransactionSqlClient {
         SubmitCompletedWeighmentRequest.CompletionInfo completion = request.getCompletion();
         SubmitCompletedWeighmentRequest.VehicleInfo vehicle = request.getVehicle();
         SubmitCompletedWeighmentRequest.ScaleInfo scale = request.getScale();
+
+        Integer healthyBirdsCount = request.getHealthyBirdsCount();
+        BigDecimal feedStockBags =
+                request.getFeedStock() != null && request.getFeedStock().getAmount() != null
+                        ? request.getFeedStock().getAmount()
+                        : null;
 
         String normalizedScheduleId = ScheduleIdSupport.normalize(request.getScheduleId());
         String transactionKey = WeighmentSubmitKeys.transactionKey(normalizedScheduleId);
@@ -253,6 +269,8 @@ public class TransactionSqlClient {
                 erpStatus,
                 normalizedScheduleId,
                 remarks,
+                healthyBirdsCount,
+                feedStockBags,
                 normalizedScheduleId,
                 normalizedScheduleId);
 
@@ -403,5 +421,7 @@ public class TransactionSqlClient {
             String scaleNo,
             Timestamp wmStartTime,
             Timestamp wmEndTime,
-            Timestamp vehicleOuttime) {}
+            Timestamp vehicleOuttime,
+            Integer birdStockNos,
+            Double feedStockBags) {}
 }
