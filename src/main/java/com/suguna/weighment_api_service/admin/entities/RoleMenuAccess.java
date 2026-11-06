@@ -2,7 +2,10 @@ package com.suguna.weighment_api_service.admin.entities;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,10 +13,17 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(name = "SUG_MAI_ROLE_MENU_ACCESS")
+@Table(name = "SUG_MAI_ROLE_MENU_ACCESS", schema = "SUG")
 public class RoleMenuAccess {
 
     @Id
+    @GeneratedValue(
+            strategy = GenerationType.SEQUENCE,
+            generator = "role_menu_seq")
+    @SequenceGenerator(
+            name = "role_menu_seq",
+            sequenceName = "SUG_MAI_ROLE_MENU_S",
+            allocationSize = 1)
     @Column(name = "ID")
     private Long id;
 

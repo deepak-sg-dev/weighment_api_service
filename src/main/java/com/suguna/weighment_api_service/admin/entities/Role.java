@@ -1,6 +1,5 @@
 package com.suguna.weighment_api_service.admin.entities;
 
-
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -14,8 +13,13 @@ import java.util.Date;
 public class Role {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "role_seq")
-    @SequenceGenerator(name = "role_seq", sequenceName = "SUG_MAI_ROLE_S", allocationSize = 1)
+    @GeneratedValue(
+            strategy = GenerationType.SEQUENCE,
+            generator = "role_seq")
+    @SequenceGenerator(
+            name = "role_seq",
+            sequenceName = "SUG_MAI_ROLE_S",
+            allocationSize = 1)
     @Column(name = "ID")
     private Long id;
 
@@ -51,5 +55,4 @@ public class Role {
 
     @Column(name = "ROLE_FOR")
     private String roleFor;
-
 }
