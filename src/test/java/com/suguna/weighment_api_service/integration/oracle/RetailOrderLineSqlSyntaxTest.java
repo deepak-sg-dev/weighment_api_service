@@ -99,9 +99,7 @@ class RetailOrderLineSqlSyntaxTest {
 
     @Test
     void gpsSelectDoesNotNvlVarcharFlexAttributeWithNumericZero() {
-        OracleErpProperties props = oeRetailProps();
-        props.setRetailCustomerGpsEnabled(true);
-        RetailOrderLineSqlSupport sql = new RetailOrderLineSqlSupport(props);
+        RetailOrderLineSqlSupport sql = new RetailOrderLineSqlSupport(oeRetailProps());
         String gps = sql.selectDetailGpsColumns().replaceAll("\\s+", " ").toUpperCase();
         assertTrue(!gps.contains("NVL(HCAS_ORD.ATTRIBUTE11, 0)"), gps);
         assertTrue(gps.contains("TO_NUMBER(TRIM(TO_CHAR(HCAS_ORD.ATTRIBUTE11)))"), gps);
@@ -109,9 +107,7 @@ class RetailOrderLineSqlSyntaxTest {
 
     @Test
     void listSelectFragmentsDoNotEndSelectWithTrailingCommaBeforeFrom() {
-        OracleErpProperties props = sugRetailProps();
-        props.setRetailOrderOtpUseDtlColumn(true);
-        RetailOrderLineSqlSupport sql = new RetailOrderLineSqlSupport(props);
+        RetailOrderLineSqlSupport sql = new RetailOrderLineSqlSupport(sugRetailProps());
         String select = (sql.selectDetailCoreColumns()
                         + sql.selectDelvStatusColumn()
                         + sql.selectDelvStartedColumn()
@@ -126,30 +122,16 @@ class RetailOrderLineSqlSyntaxTest {
 
     private static OracleErpProperties oeRetailProps() {
         OracleErpProperties props = new OracleErpProperties();
-        props.setOracleAppsSchema("APPS");
-        props.setOracleSugSchema("SUG");
         props.setRetailOrderLinkMode("OE_PO_CHAIN");
         props.setRetailPoRequisitionJoinTrim(false);
         props.setRetailCustomerFromHzSiteEnabled(true);
-        props.setRetailCustomerGpsEnabled(true);
-        props.setRetailOrderDeliveryStatusEnabled(true);
-        props.setRetailOrderDeliveryStartEnabled(true);
-        props.setRetailOrderHdrTable("SUG_MAI_RETAIL_ORDER_HDR");
-        props.setRetailOrderDtlTable("SUG_MAI_RETAIL_ORDER_DTL");
         return props;
     }
 
     private static OracleErpProperties sugRetailProps() {
         OracleErpProperties props = new OracleErpProperties();
-        props.setOracleAppsSchema("APPS");
-        props.setOracleSugSchema("SUG");
         props.setRetailOrderLinkMode("SUG_RETAIL_TABLES");
         props.setRetailCustomerFromHzSiteEnabled(false);
-        props.setRetailCustomerGpsEnabled(false);
-        props.setRetailOrderDeliveryStatusEnabled(true);
-        props.setRetailOrderDeliveryStartEnabled(true);
-        props.setRetailOrderHdrTable("SUG_MAI_RETAIL_ORDER_HDR");
-        props.setRetailOrderDtlTable("SUG_MAI_RETAIL_ORDER_DTL");
         return props;
     }
 }

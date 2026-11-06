@@ -10,22 +10,13 @@ public final class RetailRetailerOtpSupport {
     private RetailRetailerOtpSupport() {}
 
     public static RetailRetailerOtpResolution resolve(
-            boolean useDtlOtpColumn,
-            String dtlOtp,
-            Instant otpExpiresAt,
-            String message,
-            Instant now) {
-        return resolve(useDtlOtpColumn, dtlOtp, otpExpiresAt, message, now, null);
+            String dtlOtp, Instant otpExpiresAt, String message, Instant now) {
+        return resolve(dtlOtp, otpExpiresAt, message, now, null);
     }
 
     public static RetailRetailerOtpResolution resolve(
-            boolean useDtlOtpColumn,
-            String dtlOtp,
-            Instant otpExpiresAt,
-            String message,
-            Instant now,
-            String stubWhenUnset) {
-        if (useDtlOtpColumn && dtlOtp != null && !dtlOtp.isBlank()) {
+            String dtlOtp, Instant otpExpiresAt, String message, Instant now, String stubWhenUnset) {
+        if (dtlOtp != null && !dtlOtp.isBlank()) {
             Instant checkTime = now == null ? Instant.now() : now;
             if (otpExpiresAt != null && checkTime.isAfter(otpExpiresAt)) {
                 return RetailRetailerOtpResolution.expiredOtp();

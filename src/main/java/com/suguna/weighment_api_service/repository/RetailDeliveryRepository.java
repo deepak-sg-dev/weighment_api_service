@@ -44,4 +44,11 @@ public interface RetailDeliveryRepository {
     CompleteRetailDeliveryResponse triggerInvoice(String retailOrderId);
 
     RetailInvoiceStatusResponse getInvoiceStatus(String retailOrderId);
+
+    void updateDeliveryVehicle(
+            RetailScheduleContext schedule,
+            String retailOrderId,
+            String vehicleNumber,
+            String driverName,
+            String driverMobile);
 }

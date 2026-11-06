@@ -242,6 +242,7 @@ public class WeighmentImageStorageService {
     static boolean usesOrderIdInFileName(WeighmentImageKind kind) {
         return kind == WeighmentImageKind.SHOP
                 || kind == WeighmentImageKind.SIGNATURE
+                || kind == WeighmentImageKind.DELIVERY_SUPERVISOR_SIGNATURE
                 || kind == WeighmentImageKind.CUSTOMER;
     }
 

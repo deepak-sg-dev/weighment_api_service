@@ -38,85 +38,17 @@ public class LiftingScheduleSqlClient {
                    o.delivery_status
             """;
 
-    /** List: includes farm GPS (same view as detail); status and date filters applied in SQL. */
-    private static final String LIST_SCHEDULES_SELECT =
+    private static final String LIFTING_MESSAGE_SELECT =
+            "SUBSTR(o.message, 1, " + LiftingDriverMessageSupport.MAX_MESSAGE_CHARS + ") AS lifting_message";
+
+    /** {@code SUG_MAI_BIRDS_LIFTING_ORDER.DRIVER_MOBILE} — schedule vehicle API read/write. */
+    private static final String LIFTING_DRIVER_MOBILE_SELECT =
             """
-            SELECT TO_CHAR(o.erpindentid) AS schedule_id,
-                   o.mobileuserempid AS supervisor_code,
-                   f.farm_code AS farm_id,
-                   f.farm_name_village AS farm_name,
-                   NVL(NULLIF(TRIM(o.ordertype), ''), 'BROILER') AS operation_type,
-                   o.breed AS breed,
-                   NVL(o.weighment_type, 'HANGING') AS scale_type,
-                   NVL(o.no_of_birds, 0) AS planned_quantity,
-                   NVL(o.no_of_kgs, 0) AS planned_quantity_kg,
-                   o.order_request_date,
-                   o.branchcode AS branch_code,
-                   TO_CHAR(o.branchid) AS branch_id,
-                   o.ordernumber AS sales_order_no,
-                   NVL(o.body_wt, 0) AS body_wt,
-                   o.vehicleno AS vehicle_no,
-                   NVL(f.farm_name_village, o.farmername) AS farm_location,
-                   o.source AS order_source,
-            """
-            + MOBILE_STATUS_COLUMNS
-            + """
-                   ,
-                   NVL(v.farm_mst_latitude, 0) AS farm_latitude,
-                   NVL(v.farm_mst_longitude, 0) AS farm_longitude
-              FROM sug_mai_birds_lifting_order o
-              LEFT JOIN sug_farm_mst_header f
-                ON TRIM(f.farm_code) = TRIM(o.farmercode)
-              LEFT JOIN sug_farm_lifting_gps_v v
-                ON v.farm_code = o.farmercode
-               AND v.branch_code = o.branchcode
+                   o.driver_mobile AS driver_mobile_column,
             """;
 
-    /** Detail: includes GPS coordinates and full party/product fields. */
-    private static final String DETAIL_SCHEDULES_SELECT =
-            """
-            SELECT TO_CHAR(o.erpindentid) AS schedule_id,
-                   o.mobileuserempid AS supervisor_code,
-                   f.farm_code AS farm_id,
-                   f.farm_name_village AS farm_name,
-                   NVL(NULLIF(TRIM(o.ordertype), ''), 'BROILER') AS operation_type,
-                   o.breed AS breed,
-                   NVL(o.weighment_type, 'HANGING') AS scale_type,
-                   NVL(o.no_of_birds, 0) AS planned_quantity,
-                   NVL(o.no_of_kgs, 0) AS planned_quantity_kg,
-                   o.order_request_date,
-                   o.branchcode AS branch_code,
-                   TO_CHAR(o.branchid) AS branch_id,
-                   o.ordernumber AS sales_order_no,
-                   NVL(o.body_wt, 0) AS body_wt,
-                   o.vehicleno AS vehicle_no,
-                   o.driver AS driver_name,
-                   o.message AS lifting_message,
-                   NVL(f.farm_name_village, o.farmername) AS farm_location,
-                   o.source AS order_source,
-            """
-            + MOBILE_STATUS_COLUMNS
-            + """
-                   ,
-                   NVL(v.farm_mst_latitude, 0) AS farm_latitude,
-                   NVL(v.farm_mst_longitude, 0) AS farm_longitude,
-                   NVL(o.tolerancepercent, 0) AS tolerance_percent,
-                   NVL(o.avg_wt_low, 0) AS tolerance_min,
-                   NVL(o.avg_wt_high, 0) AS tolerance_max,
-                   o.farmercode AS farmer_id,
-                   f.farmer_name AS farmer_name,
-                   o.farmer_mobile_no AS farmer_mobile,
-                   o.customercode AS trader_id,
-                   o.cus_name AS trader_name,
-                   NVL(o.breed, 'BROILER') AS product_id,
-                   NVL(o.breed, 'Broiler') AS product_name
-              FROM sug_mai_birds_lifting_order o
-              LEFT JOIN sug_farm_mst_header f
-                ON TRIM(f.farm_code) = TRIM(o.farmercode)
-              LEFT JOIN sug_farm_lifting_gps_v v
-                ON v.farm_code = o.farmercode
-               AND v.branch_code = o.branchcode
-            """;
+    private final String listSchedulesSelect;
+    private final String detailSchedulesSelect;
 
     private static final String ORDER_SUPERVISOR_MATCH =
             """
@@ -211,6 +143,98 @@ public class LiftingScheduleSqlClient {
         this.jdbcTemplate = jdbcTemplate;
         this.erpProperties = erpProperties;
         this.liftingProperties = liftingProperties;
+        this.listSchedulesSelect = buildListSchedulesSelect();
+        this.detailSchedulesSelect = buildDetailSchedulesSelect();
+    }
+
+    private String buildListSchedulesSelect() {
+        return """
+            SELECT TO_CHAR(o.erpindentid) AS schedule_id,
+                   o.mobileuserempid AS supervisor_code,
+                   f.farm_code AS farm_id,
+                   f.farm_name_village AS farm_name,
+                   NVL(NULLIF(TRIM(o.ordertype), ''), 'BROILER') AS operation_type,
+                   o.breed AS breed,
+                   NVL(o.weighment_type, 'HANGING') AS scale_type,
+                   NVL(o.no_of_birds, 0) AS planned_quantity,
+                   NVL(o.no_of_kgs, 0) AS planned_quantity_kg,
+                   o.order_request_date,
+                   o.branchcode AS branch_code,
+                   TO_CHAR(o.branchid) AS branch_id,
+                   o.ordernumber AS sales_order_no,
+                   NVL(o.body_wt, 0) AS body_wt,
+                   o.vehicleno AS vehicle_no,
+                   o.driver AS driver_name,
+            """
+                + LIFTING_DRIVER_MOBILE_SELECT
+                + LIFTING_MESSAGE_SELECT
+                + """
+                   ,
+                   NVL(f.farm_name_village, o.farmername) AS farm_location,
+                   o.source AS order_source,
+            """
+                + MOBILE_STATUS_COLUMNS
+                + """
+                   ,
+                   NVL(v.farm_mst_latitude, 0) AS farm_latitude,
+                   NVL(v.farm_mst_longitude, 0) AS farm_longitude
+              FROM sug_mai_birds_lifting_order o
+              LEFT JOIN sug_farm_mst_header f
+                ON TRIM(f.farm_code) = TRIM(o.farmercode)
+              LEFT JOIN sug_farm_lifting_gps_v v
+                ON v.farm_code = o.farmercode
+               AND v.branch_code = o.branchcode
+            """;
+    }
+
+    private String buildDetailSchedulesSelect() {
+        return """
+            SELECT TO_CHAR(o.erpindentid) AS schedule_id,
+                   o.mobileuserempid AS supervisor_code,
+                   f.farm_code AS farm_id,
+                   f.farm_name_village AS farm_name,
+                   NVL(NULLIF(TRIM(o.ordertype), ''), 'BROILER') AS operation_type,
+                   o.breed AS breed,
+                   NVL(o.weighment_type, 'HANGING') AS scale_type,
+                   NVL(o.no_of_birds, 0) AS planned_quantity,
+                   NVL(o.no_of_kgs, 0) AS planned_quantity_kg,
+                   o.order_request_date,
+                   o.branchcode AS branch_code,
+                   TO_CHAR(o.branchid) AS branch_id,
+                   o.ordernumber AS sales_order_no,
+                   NVL(o.body_wt, 0) AS body_wt,
+                   o.vehicleno AS vehicle_no,
+                   o.driver AS driver_name,
+            """
+                + LIFTING_DRIVER_MOBILE_SELECT
+                + LIFTING_MESSAGE_SELECT
+                + """
+                   ,
+                   NVL(f.farm_name_village, o.farmername) AS farm_location,
+                   o.source AS order_source,
+            """
+                + MOBILE_STATUS_COLUMNS
+                + """
+                   ,
+                   NVL(v.farm_mst_latitude, 0) AS farm_latitude,
+                   NVL(v.farm_mst_longitude, 0) AS farm_longitude,
+                   NVL(o.tolerancepercent, 0) AS tolerance_percent,
+                   NVL(o.avg_wt_low, 0) AS tolerance_min,
+                   NVL(o.avg_wt_high, 0) AS tolerance_max,
+                   o.farmercode AS farmer_id,
+                   f.farmer_name AS farmer_name,
+                   o.farmer_mobile_no AS farmer_mobile,
+                   o.customercode AS trader_id,
+                   o.cus_name AS trader_name,
+                   NVL(o.breed, 'BROILER') AS product_id,
+                   NVL(o.breed, 'Broiler') AS product_name
+              FROM sug_mai_birds_lifting_order o
+              LEFT JOIN sug_farm_mst_header f
+                ON TRIM(f.farm_code) = TRIM(o.farmercode)
+              LEFT JOIN sug_farm_lifting_gps_v v
+                ON v.farm_code = o.farmercode
+               AND v.branch_code = o.branchcode
+            """;
     }
 
     public List<LiftingSchedule> listSchedules(
@@ -221,7 +245,7 @@ public class LiftingScheduleSqlClient {
         ScheduleListFilter filter = listFilter == null ? ScheduleListFilter.none() : listFilter;
         List<String> supervisorKeys = supervisorBindKeys(supervisorCode);
         int lookbackDays = filter.effectiveLookbackDays(erpProperties);
-        String sql = LIST_SCHEDULES_SELECT
+        String sql = listSchedulesSelect
                 + " WHERE "
                 + supervisorEqualityPredicate(supervisorKeys)
                 + " AND NVL(o.application, ?) = ?"
@@ -245,7 +269,7 @@ public class LiftingScheduleSqlClient {
 
     public LiftingSchedule getScheduleDetails(String supervisorCode, String scheduleId) {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
-        String sql = DETAIL_SCHEDULES_SELECT
+        String sql = detailSchedulesSelect
                 + " WHERE "
                 + ORDER_SUPERVISOR_MATCH
                 + """
@@ -273,7 +297,7 @@ public class LiftingScheduleSqlClient {
      */
     public LiftingSchedule getScheduleForAction(String supervisorCode, String scheduleId) {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
-        String sql = LIST_SCHEDULES_SELECT
+        String sql = listSchedulesSelect
                 + " WHERE "
                 + ORDER_SUPERVISOR_MATCH
                 + """
@@ -318,47 +342,89 @@ public class LiftingScheduleSqlClient {
             String driverMobile,
             String updatedBy) {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
-        String existingMessage =
+        String appCode = erpProperties.getApplicationCode();
+        List<String> existingMessages =
                 jdbcTemplate.query(
                                 """
-                                SELECT o.message FROM sug_mai_birds_lifting_order o WHERE """
+                                SELECT SUBSTR(o.message, 1, """
+                                        + LiftingDriverMessageSupport.MAX_MESSAGE_CHARS
+                                        + """
+                                        ) AS lifting_message
+                                  FROM sug_mai_birds_lifting_order o
+                                 WHERE """
                                         + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
                                         + """
-                                 AND """
+                                   AND NVL(o.application, ?) = ?
+                                   AND """
                                         + ORDER_SUPERVISOR_MATCH,
-                                (rs, rowNum) -> rs.getString(1),
+                                (rs, rowNum) -> rs.getString("lifting_message"),
                                 normalizedScheduleId,
                                 normalizedScheduleId,
+                                appCode,
+                                appCode,
                                 supervisorCode,
-                                supervisorCode)
-                        .stream()
-                        .findFirst()
-                        .orElse(null);
-        String message = LiftingDriverMessageSupport.upsertDriverMobile(existingMessage, driverMobile);
-        int updated = jdbcTemplate.update(
+                                supervisorCode);
+        // findFirst() NPEs when SQL NULL message maps to null (Optional.of(null))
+        String existingMessage = existingMessages.isEmpty() ? null : existingMessages.get(0);
+        String safeMobile = driverMobile == null ? null : driverMobile.trim();
+        String message = LiftingDriverMessageSupport.upsertDriverMobile(existingMessage, safeMobile);
+        String safeVehicle = truncateForOracle(vehicleNumber, 32);
+        String safeDriver = truncateForOracle(driverName, 240);
+        String updateSql =
                 """
                 UPDATE sug_mai_birds_lifting_order o
                    SET o.vehicleno = ?,
                        o.driver = ?,
-                       o.message = ?,
-                       o.updated_at = SYSDATE,
-                       o.updated_by = ?
+                       o.driver_mobile = ?,
+                       o.message = ?
+                """
+                        + liftingOrderAuditSetClause()
+                        + """
                  WHERE """
                         + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
                         + """
+                   AND NVL(o.application, ?) = ?
                    AND """
-                        + ORDER_SUPERVISOR_MATCH,
-                vehicleNumber,
-                driverName,
-                message,
-                trimUpdatedBy(updatedBy),
-                normalizedScheduleId,
-                normalizedScheduleId,
-                supervisorCode,
-                supervisorCode);
+                        + ORDER_SUPERVISOR_MATCH;
+        List<Object> updateArgs = new ArrayList<>();
+        updateArgs.add(safeVehicle);
+        updateArgs.add(safeDriver);
+        updateArgs.add(safeMobile);
+        updateArgs.add(message);
+        appendLiftingOrderAuditBind(updateArgs, trimUpdatedBy(updatedBy));
+        updateArgs.add(normalizedScheduleId);
+        updateArgs.add(normalizedScheduleId);
+        updateArgs.add(appCode);
+        updateArgs.add(appCode);
+        updateArgs.add(supervisorCode);
+        updateArgs.add(supervisorCode);
+        int updated = jdbcTemplate.update(updateSql, updateArgs.toArray());
         if (updated == 0) {
             throw new ResourceNotFoundException("Schedule", scheduleId);
         }
+    }
+
+    private String liftingOrderAuditSetClause() {
+        return """
+               ,
+                   o.updated_at = SYSDATE,
+                   o.updated_by = ?
+            """;
+    }
+
+    private void appendLiftingOrderAuditBind(List<Object> args, String updatedBy) {
+        args.add(updatedBy);
+    }
+
+    private static String truncateForOracle(String value, int maxLen) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.length() <= maxLen) {
+            return trimmed;
+        }
+        return trimmed.substring(0, maxLen);
     }
 
     public void startSchedule(String supervisorCode, String scheduleId, StartScheduleRequest request) {
@@ -601,10 +667,9 @@ public class LiftingScheduleSqlClient {
         schedule.setBranchId(rs.getString("branch_id"));
         schedule.setSalesOrderNo(readLongObject(rs, "sales_order_no"));
         schedule.setVehicleNumber(rs.getString("vehicle_no"));
-        if (detail) {
-            schedule.setDriverName(rs.getString("driver_name"));
-            schedule.setDriverMobile(LiftingDriverMessageSupport.readDriverMobile(rs.getString("lifting_message")));
-        }
+        schedule.setDriverName(rs.getString("driver_name"));
+        schedule.setDriverMobile(LiftingDriverMessageSupport.resolveDriverMobile(
+                rs.getString("driver_mobile_column"), rs.getString("lifting_message")));
         schedule.setFarmLocation(rs.getString("farm_location"));
         schedule.setFarmId(rs.getString("farm_id"));
         schedule.setFarmName(rs.getString("farm_name"));

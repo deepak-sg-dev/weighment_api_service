@@ -25,11 +25,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -119,7 +119,19 @@ public class WeighmentScheduleController {
         return ResponseEntity.ok(scheduleService.markDownloaded(supervisor, scheduleId, request));
     }
 
-    @PatchMapping("/{scheduleId}/vehicle")
+    /**
+     * Use when schedule id contains {@code /} (e.g. {@code 211342644/1.1}) — same as download/start query style.
+     * POST is accepted for mobile clients that do not send PATCH (spec uses PATCH).
+     */
+    @RequestMapping(value = "/vehicle", method = {RequestMethod.PATCH, RequestMethod.POST})
+    public ResponseEntity<UpdateScheduleVehicleResponse> updateVehicleByQuery(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @RequestParam String scheduleId,
+            @Valid @RequestBody UpdateScheduleVehicleRequest request) {
+        return ResponseEntity.ok(scheduleVehicleService.updateVehicle(supervisor, scheduleId, request));
+    }
+
+    @RequestMapping(value = "/{scheduleId}/vehicle", method = {RequestMethod.PATCH, RequestMethod.POST})
     public ResponseEntity<UpdateScheduleVehicleResponse> updateVehicle(
             @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
             @PathVariable String scheduleId,

@@ -20,10 +20,10 @@ class RetailOrderDeliveryStatusTest {
     void resolveForOrder_prefersDelvStatusColumn() {
         assertEquals(
                 "IN_PROGRESS",
-                RetailOrderDeliveryStatus.resolveForOrder("IN_PROGRESS", true, "Y", "Order Pushed Successfully", null));
+                RetailOrderDeliveryStatus.resolveForOrder("IN_PROGRESS", "Y", "Order Pushed Successfully", null));
         assertEquals(
                 "PENDING",
-                RetailOrderDeliveryStatus.resolveForOrder(null, false, "Y", "Order Pushed Successfully", null));
+                RetailOrderDeliveryStatus.resolveForOrder(null, "Y", "Order Pushed Successfully", null));
     }
 
     @Test

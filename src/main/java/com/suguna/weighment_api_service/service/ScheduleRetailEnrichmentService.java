@@ -180,6 +180,7 @@ public class ScheduleRetailEnrichmentService {
         dto.setLongitude(order.getRetailerLongitude());
         dto.setDeliveryStatus(order.getDeliveryStatus());
         dto.setDeliveryStartedAt(order.getDeliveryStartedAt());
+        dto.setDeliveryVehicle(order.getDeliveryVehicle());
         return dto;
     }
 

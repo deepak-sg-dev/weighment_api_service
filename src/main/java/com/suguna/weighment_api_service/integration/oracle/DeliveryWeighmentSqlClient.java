@@ -106,9 +106,7 @@ public class DeliveryWeighmentSqlClient {
                 DeliveryOrderMessageSupport.mergeDeliveryStart(state.message(), orderId, startedAt, lat, lon);
 
         List<Object> startArgs = new ArrayList<>();
-        if (erpProperties.isRetailOrderDeliveryStartEnabled()) {
-            startArgs.add(Timestamp.from(startedAt));
-        }
+        startArgs.add(Timestamp.from(startedAt));
         startArgs.add(newMessage);
         startArgs.add(orderId);
         startArgs.add(order.getRetailerId());
@@ -156,18 +154,12 @@ public class DeliveryWeighmentSqlClient {
 
         OrderMessageState after = loadMessageState(schedule, orderId);
         String deliveryStatus = RetailOrderDeliveryStatus.resolveForOrder(
-                after.delvStatus(),
-                erpProperties.isRetailOrderDeliveryStatusEnabled(),
-                after.uploadedFlag(),
-                after.message(),
-                after.deliveryStartedAt());
+                after.delvStatus(), after.uploadedFlag(), after.message(), after.deliveryStartedAt());
         return receivedResponse(schedule.getScheduleId(), orderId, Instant.now(), deliveryStatus);
     }
 
     private boolean isOrderDeliveryComplete(OrderMessageState state) {
-        if (erpProperties.isRetailOrderDeliveryStatusEnabled()
-                && state.delvStatus() != null
-                && "COMPLETED".equalsIgnoreCase(state.delvStatus().trim())) {
+        if (state.delvStatus() != null && "COMPLETED".equalsIgnoreCase(state.delvStatus().trim())) {
             return true;
         }
         return RetailOrderDeliveryStatus.isDeliveryComplete(state.uploadedFlag(), state.message());
@@ -245,6 +237,18 @@ public class DeliveryWeighmentSqlClient {
         String newMessage = DeliveryOrderMessageSupport.mergeSignatureKey(state.message(), orderId, fileKey);
         updateOrder(schedule, order.getRetailerId(), orderId, newMessage, null, null);
         maybeMarkComplete(schedule, orderId, newMessage);
+        syncLiftingDeliveryStatus(schedule);
+    }
+
+    public void recordDeliverySupervisorSignaturePhoto(
+            RetailScheduleContext schedule, String orderId, String fileKey) {
+        var order = retailDeliverySqlClient.getDeliveryOrder(schedule, orderId);
+        OrderMessageState state = loadMessageState(schedule, orderId);
+        ensureDeliveryStarted(state);
+        String newMessage =
+                DeliveryOrderMessageSupport.mergeDeliverySupervisorSignatureKey(
+                        state.message(), orderId, fileKey);
+        updateOrder(schedule, order.getRetailerId(), orderId, newMessage, null, null);
         syncLiftingDeliveryStatus(schedule);
     }
 

@@ -105,11 +105,12 @@ public class ScheduleService {
                 schedule, saleType, deliveries, deliveryStatus, supervisor.getSupervisor());
         scheduleOtpSqlClient
                 .findOtpContext(supervisorCode, schedule.getScheduleId())
-                .ifPresent(row -> detail.setOtp(ScheduleMapper.toOtpDetail(row, schedule, saleType, scheduleWorkflowService)));
+                .ifPresent(row -> detail.setOtp(
+                        ScheduleMapper.toOtpDetail(row, schedule, saleType, scheduleWorkflowService)));
         if (detail.getOtp() == null && "RETAIL".equals(saleType)) {
             detail.setOtp(ScheduleMapper.emptyOtpDetail(schedule, saleType, scheduleWorkflowService));
         }
-        detail.setWorkflow(scheduleWorkflowService.resolveForSchedule(schedule.getScheduleId()));
+        detail.setWorkflow(scheduleWorkflowService.resolveForSaleType(saleType));
         return ScheduleDetailResponse.success(detail);
     }
 

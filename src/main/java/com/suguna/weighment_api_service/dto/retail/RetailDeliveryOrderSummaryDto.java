@@ -1,5 +1,6 @@
 package com.suguna.weighment_api_service.dto.retail;
 
+import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleVehicleDto;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.AllArgsConstructor;
@@ -29,4 +30,6 @@ public class RetailDeliveryOrderSummaryDto {
     private String retailerAddress;
     private Double retailerLatitude;
     private Double retailerLongitude;
+    /** Vehicle for this shop delivery leg (may differ from schedule lifting vehicle). */
+    private ScheduleVehicleDto deliveryVehicle;
 }

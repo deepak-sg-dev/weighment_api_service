@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -150,6 +151,25 @@ public class GlobalExceptionHandler {
                 request);
     }
 
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<CommonApiResponse<Void>> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex, WebRequest request) {
+        log.warn("HTTP method not supported on {}: {}", resolveRequestPath(request), ex.getMessage());
+        Map<String, Object> details = new HashMap<>();
+        details.put("method", ex.getMethod());
+        if (ex.getSupportedHttpMethods() != null && !ex.getSupportedHttpMethods().isEmpty()) {
+            details.put(
+                    "supportedMethods",
+                    ex.getSupportedHttpMethods().stream().map(Object::toString).sorted().toList());
+        }
+        return buildErrorResponse(
+                HttpStatus.METHOD_NOT_ALLOWED,
+                ErrorCode.BAD_REQUEST.getErrorCode(),
+                ex.getMessage(),
+                details,
+                request);
+    }
+
     @ExceptionHandler(DataAccessException.class)
     public ResponseEntity<CommonApiResponse<Void>> handleDataAccess(DataAccessException ex, WebRequest request) {
         log.error("Database error on {}", resolveRequestPath(request), ex);
@@ -182,15 +202,19 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<CommonApiResponse<Void>> handleUnexpected(Exception ex, WebRequest request) {
-        log.error("Unhandled exception", ex);
+        log.error("Unhandled exception on {}", resolveRequestPath(request), ex);
         String message = responseProperties.isMaskInternalErrors()
                 ? ErrorCode.INTERNAL_ERROR.getDefaultMessage()
                 : ex.getMessage();
+        Map<String, Object> details = new HashMap<>();
+        if (responseProperties.isMaskInternalErrors()) {
+            details.put("causeType", ex.getClass().getSimpleName());
+        }
         return buildErrorResponse(
                 ErrorCode.INTERNAL_ERROR.getHttpStatus(),
                 ErrorCode.INTERNAL_ERROR.getErrorCode(),
                 message,
-                Map.of(),
+                details,
                 request);
     }
 

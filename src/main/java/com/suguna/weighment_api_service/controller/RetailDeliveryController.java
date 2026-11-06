@@ -9,6 +9,8 @@ import com.suguna.weighment_api_service.dto.retail.RetailDeliveryOrderListRespon
 import com.suguna.weighment_api_service.dto.retail.RetailInvoiceStatusResponse;
 import com.suguna.weighment_api_service.dto.retail.RetailLocationsResponse;
 import com.suguna.weighment_api_service.dto.retail.TriggerRetailInvoiceRequest;
+import com.suguna.weighment_api_service.dto.retail.UpdateRetailDeliveryVehicleRequest;
+import com.suguna.weighment_api_service.dto.retail.UpdateRetailDeliveryVehicleResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.VehiclePhotoUploadResponse;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.service.RetailDeliveryService;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -64,6 +67,18 @@ public class RetailDeliveryController {
             @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
             @RequestParam String scheduleId) {
         return ResponseEntity.ok(retailDeliveryService.listRetailerLocations(supervisor, scheduleId));
+    }
+
+    @RequestMapping(
+            value = "/delivery-orders/{retailOrderId}/vehicle",
+            method = {RequestMethod.PATCH, RequestMethod.POST})
+    public ResponseEntity<UpdateRetailDeliveryVehicleResponse> updateDeliveryVehicle(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @PathVariable String retailOrderId,
+            @RequestParam String scheduleId,
+            @Valid @RequestBody UpdateRetailDeliveryVehicleRequest request) {
+        return ResponseEntity.ok(
+                retailDeliveryService.updateDeliveryVehicle(supervisor, retailOrderId, scheduleId, request));
     }
 
     @PostMapping("/delivery-orders/{retailOrderId}/arrival")

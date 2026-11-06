@@ -17,6 +17,13 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import org.springframework.stereotype.Service;
 
+/**
+ * Updates vehicle/driver on {@code sug_mai_birds_lifting_order} (one row per schedule today).
+ *
+ * <p>Do not gate on {@code lifting_status} / {@code delivery_status} {@code COMPLETED} — lifting may
+ * finish while delivery continues, and a later phase may use one vehicle at farm and different vehicles
+ * per shop (per-delivery API + columns, not schedule-level COMPLETED).
+ */
 @Service
 public class ScheduleVehicleService {
 
@@ -29,7 +36,7 @@ public class ScheduleVehicleService {
     public UpdateScheduleVehicleResponse updateVehicle(
             AuthenticatedSupervisor supervisor, String scheduleId, UpdateScheduleVehicleRequest request) {
         validateDevice(supervisor, request.getDeviceId());
-        LiftingSchedule schedule = loadSchedule(supervisor, scheduleId);
+        LiftingSchedule schedule = loadScheduleForUpdate(supervisor, scheduleId);
         ensureMutable(schedule);
         UpdateScheduleVehicleRequest.VehiclePayload vehicle = request.getVehicle();
         String normalized = ScheduleIdSupport.normalize(scheduleId);
@@ -54,19 +61,21 @@ public class ScheduleVehicleService {
                 .build();
     }
 
+    /** Only hard stops: cancelled indent or closed schedule — not lifting/delivery {@code COMPLETED}. */
     private void ensureMutable(LiftingSchedule schedule) {
-        if (schedule.getStatus() == ScheduleStatus.COMPLETED) {
-            throw new ConflictException(ErrorCode.SCHEDULE_CLOSED, "Schedule is already completed");
+        if (schedule.getStatus() == ScheduleStatus.CLOSED) {
+            throw new ConflictException(ErrorCode.SCHEDULE_CLOSED, "Schedule is closed");
         }
-        if ("CANCELLED".equalsIgnoreCase(schedule.getLiftingStatus())) {
+        if (schedule.getLiftingStatus() != null
+                && "CANCELLED".equalsIgnoreCase(schedule.getLiftingStatus().trim())) {
             throw new ConflictException(ErrorCode.SCHEDULE_CLOSED, "Schedule is cancelled");
         }
     }
 
-    private LiftingSchedule loadSchedule(AuthenticatedSupervisor supervisor, String scheduleId) {
+    private LiftingSchedule loadScheduleForUpdate(AuthenticatedSupervisor supervisor, String scheduleId) {
         String normalized = ScheduleIdSupport.normalize(scheduleId);
         return scheduleRepository
-                .findByScheduleIdAndSupervisorId(normalized, supervisor.getSupervisor().getCode())
+                .findForActionByScheduleIdAndSupervisorId(normalized, supervisor.getSupervisor().getCode())
                 .orElseThrow(() -> new ResourceNotFoundException("Schedule", normalized));
     }
 

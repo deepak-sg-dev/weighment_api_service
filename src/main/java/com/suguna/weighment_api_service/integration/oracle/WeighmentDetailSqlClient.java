@@ -1,6 +1,5 @@
 package com.suguna.weighment_api_service.integration.oracle;
 
-import com.suguna.weighment_api_service.config.OracleErpProperties;
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentRequest;
 import com.suguna.weighment_api_service.dto.transaction.SubmitCompletedWeighmentRequest;
 import com.suguna.weighment_api_service.dto.transaction.SubmitCompletedWeighmentRequest.WeighmentEntry;
@@ -55,15 +54,13 @@ public class WeighmentDetailSqlClient {
             """;
 
     private final JdbcTemplate jdbcTemplate;
-    private final OracleErpProperties erpProperties;
     private final String insertDtlSql;
     private final String listDtlSql;
 
-    public WeighmentDetailSqlClient(JdbcTemplate jdbcTemplate, OracleErpProperties erpProperties) {
+    public WeighmentDetailSqlClient(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
-        this.erpProperties = erpProperties;
-        this.insertDtlSql = buildInsertDtlSql(erpProperties);
-        this.listDtlSql = buildListDtlSql(erpProperties);
+        this.insertDtlSql = buildInsertDtlSql();
+        this.listDtlSql = buildListDtlSql();
     }
 
     public boolean hasDetailLines(String scheduleTransactionKey) {
@@ -306,9 +303,7 @@ public class WeighmentDetailSqlClient {
         args.add(entry.getGross());
         args.add(entry.getNet());
         args.add(entry.getAverageBirdWeight());
-        if (erpProperties.isWeighmentLiveReadingAvgEnabled()) {
-            args.add(entry.getLiveReadingsAverage());
-        }
+        args.add(entry.getLiveReadingsAverage());
         args.add(entry.getWeightDifference() == null ? null : String.valueOf(entry.getWeightDifference()));
         args.add(toTimestamp(entry.getStartTime()));
         args.add(toTimestamp(entry.getEndTime()));
@@ -324,15 +319,9 @@ public class WeighmentDetailSqlClient {
         return args.toArray();
     }
 
-    static String buildInsertDtlSql(OracleErpProperties erpProperties) {
-        String liveAvgColumnLine = "";
-        String liveAvgValueLine = "";
-        if (erpProperties.isWeighmentLiveReadingAvgEnabled()) {
-            String col = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                    erpProperties.getWeighmentLiveReadingAvgColumn(), "LIVE_READING_AVG");
-            liveAvgColumnLine = "\n                " + col + ",";
-            liveAvgValueLine = "\n                ?,";
-        }
+    static String buildInsertDtlSql() {
+        String liveAvgColumnLine = "\n                " + OracleErpColumns.LIVE_READING_AVG + ",";
+        String liveAvgValueLine = "\n                ?,";
         return """
             INSERT INTO sug_mai_birds_weighment_dtl (
                 dtl_id,
@@ -384,13 +373,9 @@ public class WeighmentDetailSqlClient {
             """;
     }
 
-    static String buildListDtlSql(OracleErpProperties erpProperties) {
-        String liveAvgSelect = erpProperties.isWeighmentLiveReadingAvgEnabled()
-                ? "                   d."
-                        + RetailDeliverySqlClient.sanitizeOracleColumnName(
-                                erpProperties.getWeighmentLiveReadingAvgColumn(), "LIVE_READING_AVG")
-                        + " AS live_reading_avg,\n"
-                : "                   CAST(NULL AS NUMBER) AS live_reading_avg,\n";
+    static String buildListDtlSql() {
+        String liveAvgSelect =
+                "                   d." + OracleErpColumns.LIVE_READING_AVG + " AS live_reading_avg,\n";
         return """
             SELECT TO_CHAR(d.dtl_id) AS dtl_id,
                    d.line_sequence,

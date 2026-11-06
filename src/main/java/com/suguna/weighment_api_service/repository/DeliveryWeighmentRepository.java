@@ -23,5 +23,7 @@ public interface DeliveryWeighmentRepository {
 
     void recordSignaturePhoto(RetailScheduleContext schedule, String orderId, String fileKey);
 
+    void recordDeliverySupervisorSignaturePhoto(RetailScheduleContext schedule, String orderId, String fileKey);
+
     void recordCustomerPhoto(RetailScheduleContext schedule, String orderId, String fileKey);
 }

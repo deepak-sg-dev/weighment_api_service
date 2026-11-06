@@ -1,5 +1,6 @@
 package com.suguna.weighment_api_service.service;
 
+import com.suguna.weighment_api_service.config.OracleErpProperties;
 import com.suguna.weighment_api_service.constants.ErrorCode;
 import com.suguna.weighment_api_service.domain.LiftingSchedule;
 import com.suguna.weighment_api_service.domain.RetailScheduleContext;
@@ -9,9 +10,11 @@ import com.suguna.weighment_api_service.dto.weighment.schedule.VehiclePhotoUploa
 import com.suguna.weighment_api_service.dto.weighment.schedule.VehiclePhotoUploadResponse.VehiclePhotoInfo;
 import com.suguna.weighment_api_service.exception.ApiException;
 import com.suguna.weighment_api_service.exception.BadRequestException;
+import com.suguna.weighment_api_service.integration.oracle.WeighmentImageRefSqlClient.WeighmentImageRefInsert;
 import com.suguna.weighment_api_service.repository.DeliveryWeighmentRepository;
 import com.suguna.weighment_api_service.repository.RetailDeliveryRepository;
 import com.suguna.weighment_api_service.repository.ScheduleRepository;
+import com.suguna.weighment_api_service.repository.WeighmentImageRefRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.storage.WeighmentImageCategory;
 import com.suguna.weighment_api_service.storage.WeighmentImageDomain;
@@ -36,18 +39,24 @@ public class WeighmentImageUploadService {
     private final RetailDeliveryRepository retailDeliveryRepository;
     private final DeliveryWeighmentRepository deliveryWeighmentRepository;
     private final ScheduleRetailEnrichmentService retailEnrichmentService;
+    private final WeighmentImageRefRepository weighmentImageRefRepository;
+    private final OracleErpProperties erpProperties;
 
     public WeighmentImageUploadService(
             WeighmentImageStorageService imageStorageService,
             ScheduleRepository scheduleRepository,
             RetailDeliveryRepository retailDeliveryRepository,
             DeliveryWeighmentRepository deliveryWeighmentRepository,
-            ScheduleRetailEnrichmentService retailEnrichmentService) {
+            ScheduleRetailEnrichmentService retailEnrichmentService,
+            WeighmentImageRefRepository weighmentImageRefRepository,
+            OracleErpProperties erpProperties) {
         this.imageStorageService = imageStorageService;
         this.scheduleRepository = scheduleRepository;
         this.retailDeliveryRepository = retailDeliveryRepository;
         this.deliveryWeighmentRepository = deliveryWeighmentRepository;
         this.retailEnrichmentService = retailEnrichmentService;
+        this.weighmentImageRefRepository = weighmentImageRefRepository;
+        this.erpProperties = erpProperties;
     }
 
     @Transactional
@@ -71,6 +80,10 @@ public class WeighmentImageUploadService {
         WeighmentImageDomain domain = resolveDomain(category, domainOverride);
         RetailScheduleContext retailSchedule = ensureScheduleAccess(supervisor, normalizedScheduleId, domain);
         String saleType = resolveSaleType(supervisor, normalizedScheduleId, domain);
+        if (category == WeighmentImageCategory.TRADER_SIGN && !"WHOLESALE".equals(saleType)) {
+            throw new BadRequestException(
+                    "category TRADER_SIGN is only valid for WHOLESALE schedules (this schedule is " + saleType + ")");
+        }
         String refId = orderId == null || orderId.isBlank() ? null : orderId.trim();
 
         if (linkDeliveryReceipt && domain == WeighmentImageDomain.DELIVERY && refId != null && retailSchedule != null) {
@@ -82,6 +95,20 @@ public class WeighmentImageUploadService {
 
         if (linkDeliveryReceipt && domain == WeighmentImageDomain.DELIVERY && refId != null && retailSchedule != null) {
             linkDeliveryReceipt(retailSchedule, category, refId, stored.get(0).relativeFileKey());
+        }
+
+        String uploadedBy = trimUploadedBy(supervisor.getSupervisor().getCode());
+        for (var item : stored) {
+            weighmentImageRefRepository.save(new WeighmentImageRefInsert(
+                    erpProperties.getWeighmentImageRefApplicationCode(),
+                    normalizedScheduleId,
+                    refId,
+                    domain.name(),
+                    saleType,
+                    category.name(),
+                    item.relativeFileKey(),
+                    capturedAt,
+                    uploadedBy));
         }
 
         String uploadedAt = formatInstant(Instant.now());
@@ -177,7 +204,10 @@ public class WeighmentImageUploadService {
             String fileKey) {
         switch (category) {
             case SHOP -> deliveryWeighmentRepository.recordShopPhoto(schedule, orderId, fileKey);
-            case SIGNATURE -> deliveryWeighmentRepository.recordSignaturePhoto(schedule, orderId, fileKey);
+            case CUST_SIGN -> deliveryWeighmentRepository.recordSignaturePhoto(schedule, orderId, fileKey);
+            case DEL_SUP_SIGN ->
+                    deliveryWeighmentRepository.recordDeliverySupervisorSignaturePhoto(
+                            schedule, orderId, fileKey);
             case CUSTOMER -> deliveryWeighmentRepository.recordCustomerPhoto(schedule, orderId, fileKey);
             default -> {}
         }
@@ -185,5 +215,13 @@ public class WeighmentImageUploadService {
 
     private static String formatInstant(Instant instant) {
         return instant.atOffset(ZoneOffset.UTC).format(ISO_INSTANT);
+    }
+
+    private static String trimUploadedBy(String supervisorCode) {
+        if (supervisorCode == null) {
+            return null;
+        }
+        String trimmed = supervisorCode.trim();
+        return trimmed.length() > 64 ? trimmed.substring(0, 64) : trimmed;
     }
 }

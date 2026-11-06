@@ -65,16 +65,10 @@ public final class RetailOrderDeliveryStatus {
         return toApiStatus(fromOrderRow(uploadedFlag, message, deliveryStartedAt));
     }
 
-    /**
-     * Prefer {@code DELV_STATUS} when column mode is enabled; otherwise infer from legacy columns.
-     */
+    /** Prefer {@code DELV_STATUS}; otherwise infer from legacy message / flags. */
     public static String resolveForOrder(
-            String delvStatusFromDb,
-            boolean statusColumnEnabled,
-            String uploadedFlag,
-            String message,
-            Instant deliveryStartedAt) {
-        if (statusColumnEnabled && delvStatusFromDb != null && !delvStatusFromDb.isBlank()) {
+            String delvStatusFromDb, String uploadedFlag, String message, Instant deliveryStartedAt) {
+        if (delvStatusFromDb != null && !delvStatusFromDb.isBlank()) {
             return toApiStatus(delvStatusFromDb);
         }
         return resolveApiStatus(uploadedFlag, message, deliveryStartedAt);

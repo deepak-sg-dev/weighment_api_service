@@ -141,14 +141,14 @@ public final class ScheduleMapper {
         ScheduleOtpDetailDto otp = emptyOtpDetail(schedule, saleType, workflowService);
         PartyOtpDetailDto farmer = otp.getFarmer();
         farmer.setRequired(
-                workflowService.isLiftingStepEnabled(schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VERIFICATION)
+                workflowService.isLiftingStepEnabled(saleType, schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VERIFICATION)
                         && row.isFarmerOtpRequired());
         farmer.setMobile(row.farmerMobile());
         farmer.setOtp(row.farmerOtpValue());
 
         PartyOtpDetailDto trader = otp.getTrader();
         trader.setRequired(
-                workflowService.isLiftingStepEnabled(schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VERIFICATION)
+                workflowService.isLiftingStepEnabled(saleType, schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VERIFICATION)
                         && row.isTraderOtpRequired());
         trader.setMobile(null);
         trader.setOtp(row.traderOtpValue());
@@ -159,22 +159,15 @@ public final class ScheduleMapper {
             LiftingSchedule schedule, String saleType, ScheduleWorkflowService workflowService) {
         PartyOtpDetailDto farmer = new PartyOtpDetailDto();
         farmer.setRequired(
-                workflowService.isLiftingStepEnabled(schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VERIFICATION)
+                workflowService.isLiftingStepEnabled(saleType, schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VERIFICATION)
                         && false);
 
         PartyOtpDetailDto trader = new PartyOtpDetailDto();
         trader.setRequired(false);
 
-        PartyOtpDetailDto customer = new PartyOtpDetailDto();
-        customer.setRequired(
-                "RETAIL".equals(saleType)
-                        && workflowService.isDeliveryStepEnabled(
-                                schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VALIDATION));
-
         ScheduleOtpDetailDto otp = new ScheduleOtpDetailDto();
         otp.setFarmer(farmer);
         otp.setTrader(trader);
-        otp.setCustomer(customer);
         return otp;
     }
 

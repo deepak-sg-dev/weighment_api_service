@@ -105,6 +105,11 @@ final class DeliveryOrderMessageSupport {
         return applyCustomerAckFlag(base);
     }
 
+    static String mergeDeliverySupervisorSignatureKey(String existing, String orderId, String fileKey) {
+        String base = normalizeBase(existing, orderId);
+        return upsertSegment(base, "SUP_SIG_KEY", sanitizeSegment(fileKey));
+    }
+
     static String mergeCustomerPhotoKey(String existing, String orderId, String customerPhotoKey) {
         String base = normalizeBase(existing, orderId);
         base = upsertSegment(base, "CUST_PHOTO_KEY", sanitizeSegment(customerPhotoKey));

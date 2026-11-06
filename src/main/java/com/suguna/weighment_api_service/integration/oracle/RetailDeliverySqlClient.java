@@ -67,6 +67,7 @@ public class RetailDeliverySqlClient {
     private final String invoiceStatusSql;
     private final String updateRetailOtpMessageSql;
     private final String updateRetailOtpVerifiedSql;
+    private final String updateDeliveryVehicleSql;
 
     public RetailDeliverySqlClient(
             JdbcTemplate jdbcTemplate,
@@ -81,6 +82,7 @@ public class RetailDeliverySqlClient {
                 + retailOrderSql.selectDelvStatusColumn()
                 + retailOrderSql.selectDelvStartedColumn()
                 + retailOrderSql.selectRetailOtpColumns()
+                + retailOrderSql.selectDeliveryVehicleColumns()
                 + retailOrderSql.selectDetailGpsColumns()
                 + retailOrderSql.fromScheduleToDetailJoin()
                 + retailOrderSql.whereLiftingScheduleForRetailRead()
@@ -91,6 +93,7 @@ public class RetailDeliverySqlClient {
                 + retailOrderSql.selectDelvStatusColumn()
                 + retailOrderSql.selectDelvStartedColumn()
                 + retailOrderSql.selectRetailOtpColumns()
+                + retailOrderSql.selectDeliveryVehicleColumns()
                 + retailOrderSql.selectDetailGpsColumns()
                 + retailOrderSql.fromScheduleToDetailJoin()
                 + retailOrderSql.whereLiftingScheduleForRetailSecure()
@@ -142,6 +145,13 @@ public class RetailDeliverySqlClient {
         this.updateRetailOtpVerifiedSql =
                 retailOrderSql.buildDetailUpdatePrefix()
                         + retailOrderSql.buildMarkRetailOtpVerifiedSetClause()
+                        + RetailOrderLineSqlSupport.updateWhereClause()
+                        + RetailOrderLineSqlSupport.whereDetailOrderNo()
+                        + " AND "
+                        + retailOrderSql.existsDetailLinkedToSchedule();
+        this.updateDeliveryVehicleSql =
+                retailOrderSql.buildDetailUpdatePrefix()
+                        + retailOrderSql.buildDeliveryVehicleUpdateSetClause()
                         + RetailOrderLineSqlSupport.updateWhereClause()
                         + RetailOrderLineSqlSupport.whereDetailOrderNo()
                         + " AND "
@@ -244,6 +254,7 @@ public class RetailDeliverySqlClient {
                 + retailOrderSql.selectDelvStatusColumn()
                 + retailOrderSql.selectDelvStartedColumn()
                 + retailOrderSql.selectRetailOtpColumns()
+                + retailOrderSql.selectDeliveryVehicleColumns()
                 + retailOrderSql.selectDetailGpsColumns()
                 + retailOrderSql.fromScheduleToDetailJoin()
                 + retailOrderSql.whereLiftingSchedulesScopeForRetail(scheduleCount, false)
@@ -334,7 +345,6 @@ public class RetailDeliverySqlClient {
     public RetailRetailerOtpResolution resolveRetailerOtp(RetailScheduleContext schedule, String retailOrderId) {
         RetailOrderRow row = loadOrderRow(schedule, retailOrderId);
         return RetailRetailerOtpSupport.resolve(
-                erpProperties.isRetailOrderOtpUseDtlColumn(),
                 row.retailOtp(),
                 row.retailOtpExpiresAt(),
                 row.message(),
@@ -344,9 +354,7 @@ public class RetailDeliverySqlClient {
 
     public boolean isRetailerOtpVerified(RetailScheduleContext schedule, String retailOrderId) {
         RetailOrderRow row = loadOrderRow(schedule, retailOrderId);
-        if (erpProperties.isRetailOrderOtpUseDtlColumn()
-                && row.otpVerified() != null
-                && "Y".equalsIgnoreCase(row.otpVerified().trim())) {
+        if (row.otpVerified() != null && "Y".equalsIgnoreCase(row.otpVerified().trim())) {
             return true;
         }
         return RetailRetailerOtpSupport.isVerifiedInMessage(row.message());
@@ -369,14 +377,45 @@ public class RetailDeliverySqlClient {
         jdbcTemplate.update(updateRetailOtpVerifiedSql, args);
     }
 
+    public void updateDeliveryVehicle(
+            RetailScheduleContext schedule,
+            String retailOrderId,
+            String vehicleNumber,
+            String driverName,
+            String driverMobile) {
+        RetailOrderRow row = loadOrderRow(schedule, retailOrderId);
+        String message = RetailDeliveryVehicleMessageSupport.upsertAll(
+                row.message(), vehicleNumber, driverName, driverMobile);
+        List<Object> args = new ArrayList<>();
+        args.add(vehicleNumber.trim().toUpperCase());
+        args.add(truncate(driverName, 240));
+        args.add(driverMobile.trim());
+        args.add(message);
+        args.add(retailOrderId);
+        Object[] scheduleArgs = scheduleBindArgs(schedule);
+        for (Object scheduleArg : scheduleArgs) {
+            args.add(scheduleArg);
+        }
+        int updated = jdbcTemplate.update(updateDeliveryVehicleSql, args.toArray());
+        if (updated == 0) {
+            throw new ResourceNotFoundException("Retail delivery order", retailOrderId);
+        }
+    }
+
+    private static String truncate(String value, int maxLen) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= maxLen ? trimmed : trimmed.substring(0, maxLen);
+    }
+
     private Object[] mergeRetailOtpReplaceArgs(
             RetailScheduleContext schedule, String retailOrderId, String message, String newOtp) {
         List<Object> args = new ArrayList<>();
         args.add(message);
-        if (erpProperties.isRetailOrderOtpUseDtlColumn()) {
-            args.add(newOtp);
-            args.add(Timestamp.from(Instant.now().plusSeconds(apiV2Properties.getOtpExpiresSeconds())));
-        }
+        args.add(newOtp);
+        args.add(Timestamp.from(Instant.now().plusSeconds(apiV2Properties.getOtpExpiresSeconds())));
         args.add(retailOrderId);
         Object[] scheduleArgs = scheduleBindArgs(schedule);
         for (Object scheduleArg : scheduleArgs) {
@@ -551,6 +590,7 @@ public class RetailDeliverySqlClient {
                 .retailerAddress(row.address())
                 .retailerLatitude(nullIfZero(row.latitude()))
                 .retailerLongitude(nullIfZero(row.longitude()))
+                .deliveryVehicle(deliveryVehicleDto(row))
                 .build();
     }
 
@@ -584,16 +624,19 @@ public class RetailDeliverySqlClient {
                 .status(presentation.deliveryStatus())
                 .branchCode(row.branchCode())
                 .regionCode(row.regionCode())
+                .deliveryVehicle(deliveryVehicleDto(row))
                 .build();
+    }
+
+    private com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleVehicleDto deliveryVehicleDto(
+            RetailOrderRow row) {
+        return RetailDeliveryVehicleSupport.toDto(
+                row.delvVehicleNo(), row.delvDriver(), row.delvDriverMobile(), row.message());
     }
 
     private OrderDeliveryPresentation orderDeliveryPresentation(RetailOrderRow row) {
         String deliveryStatus = RetailOrderDeliveryStatus.resolveForOrder(
-                row.delvStatus(),
-                erpProperties.isRetailOrderDeliveryStatusEnabled(),
-                row.uploadedFlag(),
-                row.message(),
-                row.deliveryStartedAt());
+                row.delvStatus(), row.uploadedFlag(), row.message(), row.deliveryStartedAt());
         Instant started = row.deliveryStartedAt();
         if (started == null) {
             started = DeliveryOrderMessageSupport.parseDeliveryStartedAt(row.message());
@@ -630,7 +673,10 @@ public class RetailDeliverySqlClient {
                 readDeliveryStartedInstant(rs),
                 rs.getString("retail_otp"),
                 readOtpExpiresInstant(rs),
-                rs.getString("otp_verified"));
+                rs.getString("otp_verified"),
+                rs.getString("delv_vehicle_no"),
+                rs.getString("delv_driver"),
+                rs.getString("delv_driver_mobile"));
     }
 
     private static Instant readOtpExpiresInstant(ResultSet rs) throws SQLException {
@@ -722,5 +768,8 @@ public class RetailDeliverySqlClient {
             Instant deliveryStartedAt,
             String retailOtp,
             Instant retailOtpExpiresAt,
-            String otpVerified) {}
+            String otpVerified,
+            String delvVehicleNo,
+            String delvDriver,
+            String delvDriverMobile) {}
 }

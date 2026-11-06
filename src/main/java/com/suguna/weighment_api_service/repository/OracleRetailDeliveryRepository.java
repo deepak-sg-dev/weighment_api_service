@@ -92,4 +92,15 @@ public class OracleRetailDeliveryRepository implements RetailDeliveryRepository 
     public RetailInvoiceStatusResponse getInvoiceStatus(String retailOrderId) {
         return retailDeliverySqlClient.getInvoiceStatus(retailOrderId);
     }
+
+    @Override
+    public void updateDeliveryVehicle(
+            RetailScheduleContext schedule,
+            String retailOrderId,
+            String vehicleNumber,
+            String driverName,
+            String driverMobile) {
+        retailDeliverySqlClient.updateDeliveryVehicle(
+                schedule, retailOrderId, vehicleNumber, driverName, driverMobile);
+    }
 }

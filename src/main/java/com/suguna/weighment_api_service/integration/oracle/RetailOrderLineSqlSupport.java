@@ -35,10 +35,9 @@ public class RetailOrderLineSqlSupport {
     /** Same join chain with a custom detail-line alias (for correlated {@code EXISTS} on UPDATE). */
     public String fromScheduleToDetailJoin(String detailAlias) {
         String rod = detailAlias == null || detailAlias.isBlank() ? "rod" : detailAlias.trim();
-        String sug = erpProperties.getOracleSugSchema();
-        String hdr = sug + "." + erpProperties.getRetailOrderHdrTable();
-        String dtl = sug + "." + erpProperties.getRetailOrderDtlTable();
-        String apps = erpProperties.getOracleAppsSchema();
+        String hdr = OracleErpColumns.SCHEMA_SUG + "." + OracleErpColumns.RETAIL_ORDER_HDR;
+        String dtl = OracleErpColumns.SCHEMA_SUG + "." + OracleErpColumns.RETAIL_ORDER_DTL;
+        String apps = OracleErpColumns.SCHEMA_APPS;
         if (erpProperties.isRetailOrderSugTablesLink()) {
             return "\n              FROM sug_mai_birds_lifting_order e\n"
                     + joinQualifiedTable(hdr, "roh ON " + hdrToLiftingMatchPredicate("roh"))
@@ -58,7 +57,7 @@ public class RetailOrderLineSqlSupport {
 
     /** HDR ↔ lifting match (SUG tables only). */
     private String hdrToLiftingMatchPredicate(String rohAlias) {
-        String hdrCol = sanitizeHdrLiftingColumn(erpProperties.getRetailHdrLiftingMatchColumn());
+        String hdrCol = OracleErpColumns.RETAIL_HDR_LIFTING_MATCH;
         return "("
                 + "TO_CHAR(e.erpindentid) = TO_CHAR("
                 + rohAlias
@@ -81,15 +80,6 @@ public class RetailOrderLineSqlSupport {
                 + "              OR TO_CHAR(e.mobile_order_no) = TO_CHAR("
                 + rohAlias
                 + ".header_id))";
-    }
-
-    private static String sanitizeHdrLiftingColumn(String raw) {
-        String col = raw == null || raw.isBlank() ? "REQ_HEADER_ID" : raw.trim().toUpperCase();
-        if (!"REQ_HEADER_ID".equals(col) && !"HEADER_ID".equals(col)) {
-            throw new IllegalStateException(
-                    "Invalid retail HDR lifting match column: " + col + " (use REQ_HEADER_ID or HEADER_ID)");
-        }
-        return col;
     }
 
     private static String joinAppsTable(String appsSchema, String tableAndPredicate) {
@@ -308,7 +298,7 @@ public class RetailOrderLineSqlSupport {
         if (!erpProperties.isRetailCustomerFromHzSiteEnabled()) {
             return "CAST(NULL AS VARCHAR2(500))";
         }
-        String locationAlias = sanitizeSqlAlias(erpProperties.getRetailCustomerHzAddressLocationAlias(), "hl_ord");
+        String locationAlias = OracleErpColumns.HZ_LOCATION_ALIAS;
         String locationAddress = hzAcctSiteAddressSql(locationAlias);
         // AR HZ: street address on hz_locations; hcas has ADDRESS_TEXT fallback only.
         String acctSiteText = hzAddressPartAsVarchar("hcas_ord", "ADDRESS_TEXT");
@@ -320,15 +310,7 @@ public class RetailOrderLineSqlSupport {
         return "TRIM(CAST(" + tableAlias + "." + column + " AS VARCHAR2(4000)))";
     }
 
-    private static String sanitizeSqlAlias(String raw, String defaultAlias) {
-        String alias = raw == null || raw.isBlank() ? defaultAlias : raw.trim();
-        if (!alias.matches("[A-Za-z][A-Za-z0-9_]*")) {
-            throw new IllegalStateException("Invalid SQL table alias: " + alias);
-        }
-        return alias;
-    }
-
-    /** Ship-to street address from {@code hz_cust_acct_sites_all} (see {@code retailCustomerHzAddressColumns}). */
+    /** Ship-to street address from {@code hz_locations} ({@link OracleErpColumns#HZ_ADDRESS_PARTS}). */
     String hzAcctSiteAddressSql(String siteAlias) {
         String a = siteAlias.trim();
         java.util.List<String> columns = resolveHzAddressColumns();
@@ -350,31 +332,12 @@ public class RetailOrderLineSqlSupport {
     }
 
     private java.util.List<String> resolveHzAddressColumns() {
-        String raw = erpProperties.getRetailCustomerHzAddressColumns();
-        if (raw == null || raw.isBlank()) {
-            return java.util.List.of("ADDRESS1", "ADDRESS2", "CITY");
-        }
-        java.util.List<String> cols = new java.util.ArrayList<>();
-        for (String part : raw.split(",")) {
-            if (part == null || part.isBlank()) {
-                continue;
-            }
-            cols.add(RetailDeliverySqlClient.sanitizeOracleColumnName(part.trim(), part.trim().toUpperCase()));
-        }
-        return cols.isEmpty() ? java.util.List.of("ADDRESS1", "ADDRESS2", "CITY") : cols;
+        return java.util.List.of(OracleErpColumns.HZ_ADDRESS_PARTS);
     }
 
     public String selectDetailGpsColumns() {
-        if (!erpProperties.isRetailCustomerGpsEnabled()) {
-            return """
-                   0 AS retailer_latitude,
-                   0 AS retailer_longitude
-            """;
-        }
-        String lat = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                erpProperties.getRetailCustomerLatitudeColumn(), "ATTRIBUTE11");
-        String lon = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                erpProperties.getRetailCustomerLongitudeColumn(), "ATTRIBUTE10");
+        String lat = OracleErpColumns.HZ_SITE_LATITUDE;
+        String lon = OracleErpColumns.HZ_SITE_LONGITUDE;
         if (!erpProperties.isRetailCustomerFromHzSiteEnabled()) {
             return """
                    0 AS retailer_latitude,
@@ -414,94 +377,75 @@ public class RetailOrderLineSqlSupport {
     }
 
     public String selectDelvStatusColumn() {
-        if (!erpProperties.isRetailOrderDeliveryStatusEnabled()) {
-            return """
-                   CAST(NULL AS VARCHAR2(32)) AS delv_status,
-            """;
-        }
-        String col = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                erpProperties.getRetailOrderDeliveryStatusColumn(), "DELV_STATUS");
-        return "                   NVL(rod." + col + ", 'PENDING') AS delv_status,\n";
+        return "                   NVL(rod."
+                + OracleErpColumns.DELV_STATUS
+                + ", 'PENDING') AS delv_status,\n";
     }
 
     public String selectDelvStartedColumn() {
-        if (!erpProperties.isRetailOrderDeliveryStartEnabled()) {
-            return """
-                   CAST(NULL AS DATE) AS delivery_started_date,
-            """;
-        }
-        String col = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                erpProperties.getRetailOrderDeliveryStartedDateColumn(), "DELV_START_DT");
-        return "                   rod." + col + " AS delivery_started_date,\n";
+        return "                   rod." + OracleErpColumns.DELV_START_DT + " AS delivery_started_date,\n";
+    }
+
+    /** Per-shop delivery vehicle columns ({@code delv_vehicle_no}, driver, mobile aliases). */
+    public String selectDeliveryVehicleColumns() {
+        return "                   rod."
+                + OracleErpColumns.DELV_VEHICLE_NO
+                + " AS delv_vehicle_no,\n                   rod."
+                + OracleErpColumns.DELV_DRIVER
+                + " AS delv_driver,\n                   rod."
+                + OracleErpColumns.DELV_DRIVER_MOB
+                + " AS delv_driver_mobile,\n";
+    }
+
+    /** {@code SET} clause for per-shop delivery vehicle update (DTL columns + {@code message} mirror tokens). */
+    public String buildDeliveryVehicleUpdateSetClause() {
+        return "rod."
+                + OracleErpColumns.DELV_VEHICLE_NO
+                + " = ?,\n                   rod."
+                + OracleErpColumns.DELV_DRIVER
+                + " = ?,\n                   rod."
+                + OracleErpColumns.DELV_DRIVER_MOB
+                + " = ?,\n                   rod.message = ?";
     }
 
     /** Shop OTP on detail line ({@code retail_otp}, {@code otp_expires_at} aliases). */
     public String selectRetailOtpColumns() {
-        if (!erpProperties.isRetailOrderOtpUseDtlColumn()) {
-            return """
-                   CAST(NULL AS VARCHAR2(8)) AS retail_otp,
-                   CAST(NULL AS DATE) AS otp_expires_at,
-                   CAST(NULL AS VARCHAR2(1)) AS otp_verified,
-            """;
-        }
-        String otpCol = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                erpProperties.getRetailOrderOtpColumn(), "RETAIL_OTP");
-        String expiresCol = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                erpProperties.getRetailOrderOtpExpiresColumn(), "OTP_EXPIRES_AT");
-        String verifiedCol = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                erpProperties.getRetailOrderOtpVerifiedColumn(), "OTP_VERIFIED");
-        return "                   rod." + otpCol + " AS retail_otp,\n                   rod." + expiresCol
-                + " AS otp_expires_at,\n                   rod." + verifiedCol + " AS otp_verified,\n";
+        return "                   rod."
+                + OracleErpColumns.RETAIL_OTP
+                + " AS retail_otp,\n                   rod."
+                + OracleErpColumns.OTP_EXPIRES_AT
+                + " AS otp_expires_at,\n                   rod."
+                + OracleErpColumns.OTP_VERIFIED
+                + " AS otp_verified,\n";
     }
 
-    /** {@code SET} clause for shop OTP resend (message + optional DTL OTP columns). */
+    /** {@code SET} clause for shop OTP resend (message + DTL OTP columns). */
     public String buildReplaceRetailOtpSetClause() {
-        StringBuilder set = new StringBuilder(
-                """
-                rod.message = ?
-                """);
-        if (erpProperties.isRetailOrderOtpUseDtlColumn()) {
-            String otpCol = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                    erpProperties.getRetailOrderOtpColumn(), "RETAIL_OTP");
-            String expiresCol = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                    erpProperties.getRetailOrderOtpExpiresColumn(), "OTP_EXPIRES_AT");
-            set.append(",\n                   rod.")
-                    .append(otpCol)
-                    .append(" = ?,\n                   rod.")
-                    .append(expiresCol)
-                    .append(" = ?");
-        }
-        set.append("\n");
-        return set.toString();
+        return """
+                rod.message = ?,
+                   rod."""
+                + OracleErpColumns.RETAIL_OTP
+                + " = ?,\n                   rod."
+                + OracleErpColumns.OTP_EXPIRES_AT
+                + " = ?\n";
     }
 
-    /** {@code SET} clause for shop OTP verified (message + optional {@code OTP_VERIFIED}). */
+    /** {@code SET} clause for shop OTP verified (message + {@code OTP_VERIFIED}). */
     public String buildMarkRetailOtpVerifiedSetClause() {
-        StringBuilder set = new StringBuilder(
-                """
-                rod.message = ?
-                """);
-        if (erpProperties.isRetailOrderOtpUseDtlColumn()) {
-            String verifiedCol = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                    erpProperties.getRetailOrderOtpVerifiedColumn(), "OTP_VERIFIED");
-            set.append(",\n                   rod.").append(verifiedCol).append(" = 'Y'");
-        }
-        set.append("\n");
-        return set.toString();
+        return """
+                rod.message = ?,
+                   rod."""
+                + OracleErpColumns.OTP_VERIFIED
+                + " = 'Y'\n";
     }
 
-    /** Appended to delivery-complete UPDATE when DTL OTP columns exist. */
+    /** Appended to delivery-complete UPDATE ({@code OTP_VERIFIED}). */
     public String buildMarkRetailOtpVerifiedSetSuffix() {
-        if (!erpProperties.isRetailOrderOtpUseDtlColumn()) {
-            return "";
-        }
-        String verifiedCol = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                erpProperties.getRetailOrderOtpVerifiedColumn(), "OTP_VERIFIED");
-        return ",\n                   rod." + verifiedCol + " = 'Y'";
+        return ",\n                   rod." + OracleErpColumns.OTP_VERIFIED + " = 'Y'";
     }
 
     public String updateDetailTableName() {
-        return erpProperties.getOracleSugSchema() + "." + erpProperties.getRetailOrderDtlTable();
+        return OracleErpColumns.SCHEMA_SUG + "." + OracleErpColumns.RETAIL_ORDER_DTL;
     }
 
     /** {@code UPDATE schema.dtl rod SET } with explicit spacing (safe for string concat). */
@@ -510,19 +454,11 @@ public class RetailOrderLineSqlSupport {
     }
 
     public String buildStartDeliverySetClause() {
-        StringBuilder set = new StringBuilder();
-        if (erpProperties.isRetailOrderDeliveryStatusEnabled()) {
-            String statusCol = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                    erpProperties.getRetailOrderDeliveryStatusColumn(), "DELV_STATUS");
-            set.append("rod.").append(statusCol).append(" = 'IN_PROGRESS',\n                   ");
-        }
-        if (erpProperties.isRetailOrderDeliveryStartEnabled()) {
-            String startCol = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                    erpProperties.getRetailOrderDeliveryStartedDateColumn(), "DELV_START_DT");
-            set.append("rod.").append(startCol).append(" = ?,\n                   ");
-        }
-        set.append("rod.message = ?,\n                   rod.uploaded_date = SYSDATE\n");
-        return set.toString();
+        return "rod."
+                + OracleErpColumns.DELV_STATUS
+                + " = 'IN_PROGRESS',\n                   rod."
+                + OracleErpColumns.DELV_START_DT
+                + " = ?,\n                   rod.message = ?,\n                   rod.uploaded_date = SYSDATE\n";
     }
 
     public String buildMessageUpdateSetClause() {
@@ -536,18 +472,9 @@ public class RetailOrderLineSqlSupport {
     }
 
     public String buildLoadOrderMessageStateSql() {
-        String statusSelect = erpProperties.isRetailOrderDeliveryStatusEnabled()
-                ? "NVL(rod."
-                        + RetailDeliverySqlClient.sanitizeOracleColumnName(
-                                erpProperties.getRetailOrderDeliveryStatusColumn(), "DELV_STATUS")
-                        + ", 'PENDING') AS delv_status"
-                : "CAST(NULL AS VARCHAR2(32)) AS delv_status";
-        String dateSelect = erpProperties.isRetailOrderDeliveryStartEnabled()
-                ? "rod."
-                        + RetailDeliverySqlClient.sanitizeOracleColumnName(
-                                erpProperties.getRetailOrderDeliveryStartedDateColumn(), "DELV_START_DT")
-                        + " AS delivery_started_date"
-                : "CAST(NULL AS DATE) AS delivery_started_date";
+        String statusSelect =
+                "NVL(rod." + OracleErpColumns.DELV_STATUS + ", 'PENDING') AS delv_status";
+        String dateSelect = "rod." + OracleErpColumns.DELV_START_DT + " AS delivery_started_date";
         return """
             SELECT rod.message, rod.uploaded_flag,
                    """
@@ -566,16 +493,8 @@ public class RetailOrderLineSqlSupport {
                 rod.uploaded_flag = 'Y',
                    rod.message = ?,
                    rod.uploaded_date = SYSDATE""");
-        if (erpProperties.isRetailOrderDeliveryStatusEnabled()) {
-            String statusCol = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                    erpProperties.getRetailOrderDeliveryStatusColumn(), "DELV_STATUS");
-            set.append(",\n                   rod.").append(statusCol).append(" = 'COMPLETED'");
-        }
-        if (erpProperties.isRetailOrderDeliveryStartEnabled()) {
-            String endCol = RetailDeliverySqlClient.sanitizeOracleColumnName(
-                    erpProperties.getRetailOrderDeliveryCompletedDateColumn(), "DELV_END_DT");
-            set.append(",\n                   rod.").append(endCol).append(" = SYSDATE");
-        }
+        set.append(",\n                   rod.").append(OracleErpColumns.DELV_STATUS).append(" = 'COMPLETED'");
+        set.append(",\n                   rod.").append(OracleErpColumns.DELV_END_DT).append(" = SYSDATE");
         set.append(buildMarkRetailOtpVerifiedSetSuffix());
         set.append("\n");
         return set.toString();

@@ -14,6 +14,8 @@ public class ScheduleOrderDto {
     private String deliveryStatus;
     /** ISO-8601 UTC when delivery was started for this order. */
     private String deliveryStartedAt;
+    /** Per-shop delivery vehicle when set (retail). */
+    private ScheduleVehicleDto deliveryVehicle;
 
     public ScheduleOrderDto() {}
 
@@ -87,5 +89,13 @@ public class ScheduleOrderDto {
 
     public void setDeliveryStartedAt(String deliveryStartedAt) {
         this.deliveryStartedAt = deliveryStartedAt;
+    }
+
+    public ScheduleVehicleDto getDeliveryVehicle() {
+        return deliveryVehicle;
+    }
+
+    public void setDeliveryVehicle(ScheduleVehicleDto deliveryVehicle) {
+        this.deliveryVehicle = deliveryVehicle;
     }
 }

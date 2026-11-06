@@ -151,7 +151,7 @@ public class DeliveryWeighmentService {
         var signatureUploaded = imageUploadService.upload(
                 supervisor,
                 scheduleId,
-                WeighmentImageCategory.SIGNATURE,
+                WeighmentImageCategory.CUST_SIGN,
                 orderId,
                 null,
                 List.of(signature),

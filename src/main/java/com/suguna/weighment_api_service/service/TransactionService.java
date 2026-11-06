@@ -45,6 +45,7 @@ public class TransactionService {
     private final ScheduleRepository scheduleRepository;
     private final LiftingScheduleSqlClient liftingScheduleSqlClient;
     private final ScheduleWorkflowService scheduleWorkflowService;
+    private final ScheduleRetailEnrichmentService retailEnrichmentService;
     private final ApiV2Properties apiV2Properties;
 
     public TransactionService(
@@ -55,6 +56,7 @@ public class TransactionService {
             ScheduleRepository scheduleRepository,
             LiftingScheduleSqlClient liftingScheduleSqlClient,
             ScheduleWorkflowService scheduleWorkflowService,
+            ScheduleRetailEnrichmentService retailEnrichmentService,
             ApiV2Properties apiV2Properties) {
         this.transactionRepository = transactionRepository;
         this.transactionSqlClient = transactionSqlClient;
@@ -63,6 +65,7 @@ public class TransactionService {
         this.scheduleRepository = scheduleRepository;
         this.liftingScheduleSqlClient = liftingScheduleSqlClient;
         this.scheduleWorkflowService = scheduleWorkflowService;
+        this.retailEnrichmentService = retailEnrichmentService;
         this.apiV2Properties = apiV2Properties;
     }
 
@@ -72,12 +75,7 @@ public class TransactionService {
         validateDevice(supervisor, request.getDeviceId());
         validateSupervisor(supervisor, request.getSupervisorId());
         String scheduleId = WeighmentSubmitKeys.normalizeScheduleId(request.getScheduleId());
-        validateWeighmentEntries(scheduleId, request.getWeighmentEntries());
-        validateSubmissionEvidence(scheduleId, request);
-        validateWeighmentTotals(request.getTotals());
-
         String supervisorCode = supervisor.getSupervisor().getCode();
-        String transactionKey = WeighmentSubmitKeys.transactionKey(scheduleId);
 
         LiftingSchedule schedule = scheduleRepository
                 .findByScheduleIdAndSupervisorId(scheduleId, supervisorCode)
@@ -87,6 +85,13 @@ public class TransactionService {
                                 + scheduleId
                                 + " for supervisor "
                                 + supervisorCode));
+
+        validateWeighmentEntries(scheduleId, request.getWeighmentEntries());
+        String submissionSaleType = resolveSubmissionSaleType(schedule, request);
+        validateSubmissionEvidence(submissionSaleType, scheduleId, request);
+        validateWeighmentTotals(request.getTotals());
+
+        String transactionKey = WeighmentSubmitKeys.transactionKey(scheduleId);
 
         if (schedule.getStatus() == ScheduleStatus.COMPLETED) {
             throw new ConflictException(ErrorCode.SCHEDULE_CLOSED, "Schedule is already completed");
@@ -208,21 +213,34 @@ public class TransactionService {
         }
     }
 
-    private void validateSubmissionEvidence(String scheduleId, SubmitCompletedWeighmentRequest request) {
+    private void validateSubmissionEvidence(
+            String saleType, String scheduleId, SubmitCompletedWeighmentRequest request) {
         SubmitCompletedWeighmentRequest.FarmValidation farm = request.getFarmValidation();
         if (farm == null) {
             throw new BusinessValidationException(
                     ErrorCodes.VALIDATION_PENDING, "Farm validation evidence is required");
         }
-        if (scheduleWorkflowService.isLiftingStepEnabled(scheduleId, WeighmentWorkflowStep.OTP_VERIFICATION)
+        if (scheduleWorkflowService.isLiftingStepEnabled(saleType, scheduleId, WeighmentWorkflowStep.OTP_VERIFICATION)
                 && !Boolean.TRUE.equals(farm.getFarmerOtpVerified())) {
             throw new BusinessValidationException(
                     ErrorCodes.VALIDATION_PENDING, "Farmer OTP verification must be completed before submission");
         }
-        if (scheduleWorkflowService.isLiftingStepEnabled(scheduleId, WeighmentWorkflowStep.GEOFENCING)
+        if (scheduleWorkflowService.isLiftingStepEnabled(saleType, scheduleId, WeighmentWorkflowStep.GEOFENCING)
                 && !Boolean.TRUE.equals(farm.getGeofencePassed())) {
             throw new BusinessValidationException(
                     ErrorCodes.BUSINESS_VALIDATION_FAILED, "Geofence validation failed");
         }
+    }
+
+    /**
+     * Align lifting workflow flags with schedule detail: use request {@code saleType} when sent, otherwise ERP order
+     * source via {@link ScheduleRetailEnrichmentService#resolveSaleType}.
+     */
+    private String resolveSubmissionSaleType(LiftingSchedule schedule, SubmitCompletedWeighmentRequest request) {
+        String fromRequest = request.effectiveSaleType();
+        if (fromRequest != null && !fromRequest.isBlank()) {
+            return fromRequest;
+        }
+        return retailEnrichmentService.resolveSaleType(schedule.getOrderSource());
     }
 }

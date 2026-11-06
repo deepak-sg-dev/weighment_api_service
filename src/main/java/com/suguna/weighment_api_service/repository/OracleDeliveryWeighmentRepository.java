@@ -52,6 +52,12 @@ public class OracleDeliveryWeighmentRepository implements DeliveryWeighmentRepos
     }
 
     @Override
+    public void recordDeliverySupervisorSignaturePhoto(
+            RetailScheduleContext schedule, String orderId, String fileKey) {
+        deliveryWeighmentSqlClient.recordDeliverySupervisorSignaturePhoto(schedule, orderId, fileKey);
+    }
+
+    @Override
     public void recordCustomerPhoto(RetailScheduleContext schedule, String orderId, String fileKey) {
         deliveryWeighmentSqlClient.recordCustomerPhoto(schedule, orderId, fileKey);
     }

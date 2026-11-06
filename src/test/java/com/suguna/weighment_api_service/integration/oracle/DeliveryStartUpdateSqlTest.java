@@ -58,14 +58,8 @@ class DeliveryStartUpdateSqlTest {
 
     private static OracleErpProperties sugRetailProps() {
         OracleErpProperties props = new OracleErpProperties();
-        props.setOracleAppsSchema("APPS");
-        props.setOracleSugSchema("SUG");
         props.setRetailOrderLinkMode("SUG_RETAIL_TABLES");
         props.setRetailCustomerFromHzSiteEnabled(false);
-        props.setRetailOrderDeliveryStatusEnabled(true);
-        props.setRetailOrderDeliveryStartEnabled(true);
-        props.setRetailOrderHdrTable("SUG_MAI_RETAIL_ORDER_HDR");
-        props.setRetailOrderDtlTable("SUG_MAI_RETAIL_ORDER_DTL");
         props.setApplicationCode("BRO-WEIGHMENT");
         props.setRetailLiftingSource("RETAIL");
         return props;

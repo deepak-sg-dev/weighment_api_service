@@ -22,8 +22,10 @@ import org.springframework.web.multipart.MultipartFile;
 @Tag(
         name = "Weighment Images",
         description =
-                "Common multipart upload by category (VEHICLE, SHOP, SIGNATURE, CUSTOMER, OTHER). "
-                        + "Delivery categories require orderId; OTHER accepts optional domain=LIFTING|DELIVERY.")
+                "Multipart upload by category. Lifting: VEHICLE, COMPLETION, FARMER_SIGN, LIFT_SUP_SIGN, TRADER_SIGN "
+                        + "(TRADER_SIGN WHOLESALE only; aliases accepted). Delivery SHOP, CUST_SIGN, DEL_SUP_SIGN, CUSTOMER "
+                        + "require orderId (aliases: SIGNATURE, CUSTOMER_SIGNATURE, DELIVERY_SUPERVISOR_SIGNATURE). "
+                        + "OTHER accepts domain=LIFTING|DELIVERY.")
 public class WeighmentImageController {
 
     private final WeighmentImageUploadService imageUploadService;

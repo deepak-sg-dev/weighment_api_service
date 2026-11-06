@@ -52,6 +52,22 @@ class WeighmentImageStorageServiceTest {
         String signature = WeighmentImageStorageService.buildFileName(
                 WeighmentImageKind.SIGNATURE, "4747402", "ORD99", ".png", "251026143100456", 1, 1);
         assertEquals("sg-ORD99-251026143100456.png", signature);
+
+        String farmerSig = WeighmentImageStorageService.buildFileName(
+                WeighmentImageKind.FARMER_SIGNATURE, "4747402", null, ".png", "251026143100456", 1, 1);
+        assertEquals("ff-4747402-251026143100456.png", farmerSig);
+
+        String supDel = WeighmentImageStorageService.buildFileName(
+                WeighmentImageKind.DELIVERY_SUPERVISOR_SIGNATURE,
+                "4747402",
+                "ORD99",
+                ".png",
+                "251026143100456",
+                1,
+                1);
+        assertEquals("ds-ORD99-251026143100456.png", supDel);
+
         assertTrue(WeighmentImageStorageService.usesOrderIdInFileName(WeighmentImageKind.SHOP));
+        assertTrue(!WeighmentImageStorageService.usesOrderIdInFileName(WeighmentImageKind.FARMER_SIGNATURE));
     }
 }
