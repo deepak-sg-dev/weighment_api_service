@@ -1,23 +1,31 @@
 package com.suguna.weighment_api_service.admin.services;
 
+import com.suguna.weighment_api_service.admin.dtos.requests.CreateRoleRequestDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.CreateRoleResponseDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.MenuListResponseDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.RoleDetailResponseDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.RoleListResponseDTO;
+import com.suguna.weighment_api_service.admin.dtos.requests.UpdateRolePermissionsRequestDTO;
+import com.suguna.weighment_api_service.admin.dtos.requests.UpdateRoleRequestDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.UpdateResponseDTO;
 
-
-import com.suguna.weighment_api_service.admin.dtos.requests.RoleRequestDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.RoleResponseDTO;
-
-import java.util.List;
 
 public interface RoleService {
 
-    RoleResponseDTO createRole(RoleRequestDTO dto);
+    CreateRoleResponseDTO createRole(
+            CreateRoleRequestDTO request);
 
-    RoleResponseDTO updateRole(Long id, RoleRequestDTO dto);
+    RoleListResponseDTO getRoles();
 
-    RoleResponseDTO getRoleById(Long id);
+    MenuListResponseDTO getMenus();
 
-    List<RoleResponseDTO> getAllRoles();
+    RoleDetailResponseDTO getRole(
+            Long roleId);
+    UpdateResponseDTO updateRole(
+            Long roleId,
+            UpdateRoleRequestDTO request);
 
-    List<RoleResponseDTO> getActiveRoles(String application);
-
-    String deleteRole(Long id);
+    UpdateResponseDTO updatePermissions(
+            Long roleId,
+            UpdateRolePermissionsRequestDTO request);
 }
