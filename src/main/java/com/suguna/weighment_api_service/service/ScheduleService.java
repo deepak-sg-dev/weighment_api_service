@@ -19,6 +19,7 @@ import com.suguna.weighment_api_service.exception.BadRequestException;
 import com.suguna.weighment_api_service.exception.ConflictException;
 import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailDto;
+import com.suguna.weighment_api_service.integration.oracle.ScheduleDcAddressSqlClient;
 import com.suguna.weighment_api_service.integration.oracle.ScheduleOtpSqlClient;
 import com.suguna.weighment_api_service.mapper.ScheduleMapper;
 import com.suguna.weighment_api_service.repository.ItemGstRepository;
@@ -40,6 +41,7 @@ public class ScheduleService {
     private final ScheduleOtpSqlClient scheduleOtpSqlClient;
     private final ScheduleWorkflowService scheduleWorkflowService;
     private final ItemGstRepository itemGstRepository;
+    private final ScheduleDcAddressSqlClient scheduleDcAddressSqlClient;
     private final OracleErpProperties erpProperties;
 
     public ScheduleService(
@@ -48,12 +50,14 @@ public class ScheduleService {
             ScheduleOtpSqlClient scheduleOtpSqlClient,
             ScheduleWorkflowService scheduleWorkflowService,
             ItemGstRepository itemGstRepository,
+            ScheduleDcAddressSqlClient scheduleDcAddressSqlClient,
             OracleErpProperties erpProperties) {
         this.scheduleRepository = scheduleRepository;
         this.retailEnrichmentService = retailEnrichmentService;
         this.scheduleOtpSqlClient = scheduleOtpSqlClient;
         this.scheduleWorkflowService = scheduleWorkflowService;
         this.itemGstRepository = itemGstRepository;
+        this.scheduleDcAddressSqlClient = scheduleDcAddressSqlClient;
         this.erpProperties = erpProperties;
     }
 
@@ -122,6 +126,7 @@ public class ScheduleService {
         }
         detail.setWorkflow(scheduleWorkflowService.resolveForSaleType(saleType));
         applyItemGstToDc(detail, schedule);
+        applyDcAddresses(detail, schedule);
         return ScheduleDetailResponse.success(detail);
     }
 
@@ -209,6 +214,18 @@ public class ScheduleService {
             return "PENDING";
         }
         return retailAggregated;
+    }
+
+    private void applyDcAddresses(ScheduleDetailDto detail, LiftingSchedule schedule) {
+        scheduleDcAddressSqlClient
+                .findBranchAddress(schedule.getBranchId(), schedule.getBranchCode())
+                .ifPresent(address -> ScheduleMapper.applyBranchAddress(detail.getBranch(), address));
+        if (detail.getCustomer() == null || detail.getCustomer().getCode() == null) {
+            return;
+        }
+        scheduleDcAddressSqlClient
+                .findIndentCustomerAddress(detail.getCustomer().getCode(), detail.getCustomer().getLocation())
+                .ifPresent(address -> ScheduleMapper.applyCustomerAddress(detail.getCustomer(), address));
     }
 
     private void applyItemGstToDc(ScheduleDetailDto detail, LiftingSchedule schedule) {

@@ -7,6 +7,11 @@ public class ScheduleBranchDto {
     private String name;
     /** Display label derived from {@link #name} (e.g. {@code INDAPUR} from {@code M47:INDAPUR BROILER BRANCH-MH}). */
     private String shortName;
+    /** HR location address for DC print ({@code hr_locations_all} via {@code sug_organization_mv}). */
+    private String address;
+    private String city;
+    private String postalCode;
+    private String state;
 
     public ScheduleBranchDto() {}
 
@@ -40,5 +45,37 @@ public class ScheduleBranchDto {
 
     public void setShortName(String shortName) {
         this.shortName = shortName;
+    }
+
+    public String getAddress() {
+        return address;
+    }
+
+    public void setAddress(String address) {
+        this.address = address;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getPostalCode() {
+        return postalCode;
+    }
+
+    public void setPostalCode(String postalCode) {
+        this.postalCode = postalCode;
+    }
+
+    public String getState() {
+        return state;
+    }
+
+    public void setState(String state) {
+        this.state = state;
     }
 }

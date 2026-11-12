@@ -506,6 +506,71 @@ public class RetailOrderLineSqlSupport {
                         placeholders);
     }
 
+    /**
+     * One HZ ship-to for the lifting indent customer. Binds: accountNumber, preferredLocation,
+     * preferredLocation. Prefers {@code hz_locations.address1} matching {@code CUS_LOCATION}.
+     */
+    public String buildHzIndentCustomerLookupSql() {
+        if (!erpProperties.isRetailCustomerFromHzSiteEnabled()) {
+            throw new IllegalStateException("HZ customer lookup is disabled");
+        }
+        String siteUse = sanitizeSiteUseCode(erpProperties.getRetailCustomerSiteUseCode());
+        String apps = OracleErpColumns.SCHEMA_APPS;
+        String lat = hzSiteFlexCoordNumber("hcas", OracleErpColumns.HZ_SITE_LATITUDE);
+        String lon = hzSiteFlexCoordNumber("hcas", OracleErpColumns.HZ_SITE_LONGITUDE);
+        String address = hzAcctSiteAddressSql("hl");
+        return """
+            SELECT customer_code, customer_name, address, city, postal_code, state_name,
+                   retailer_latitude, retailer_longitude
+              FROM (
+                SELECT TRIM(TO_CHAR(hca.account_number)) AS customer_code,
+                       hp.party_name AS customer_name,
+                       NVL(NULLIF(%s, ''), NULLIF(%s, '')) AS address,
+                       hl.city AS city,
+                       hl.postal_code AS postal_code,
+                       hl.state AS state_name,
+                       NVL(%s, 0) AS retailer_latitude,
+                       NVL(%s, 0) AS retailer_longitude,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY TRIM(TO_CHAR(hca.account_number))
+                           ORDER BY CASE
+                               WHEN ? IS NULL THEN 1
+                               WHEN UPPER(TRIM(hl.address1)) = UPPER(TRIM(?)) THEN 0
+                               ELSE 1
+                           END,
+                           hca.cust_account_id,
+                           csu.site_use_id
+                       ) AS rn
+                  FROM %s.hz_cust_accounts hca
+                  JOIN %s.hz_parties hp ON hp.party_id = hca.party_id
+                  LEFT JOIN %s.hz_cust_acct_sites_all hcas
+                    ON hcas.cust_account_id = hca.cust_account_id
+                  LEFT JOIN %s.hz_cust_site_uses_all csu
+                    ON csu.cust_acct_site_id = hcas.cust_acct_site_id
+                   AND csu.site_use_code = '%s'
+                   AND csu.status = 'A'
+                  LEFT JOIN %s.hz_party_sites hps
+                    ON hps.party_site_id = hcas.party_site_id
+                  LEFT JOIN %s.hz_locations hl
+                    ON hl.location_id = hps.location_id
+                 WHERE TRIM(TO_CHAR(hca.account_number)) = TRIM(?)
+              )
+             WHERE rn = 1
+            """
+                .formatted(
+                        address,
+                        hzAddressPartAsVarchar("hcas", "ADDRESS_TEXT"),
+                        lat,
+                        lon,
+                        apps,
+                        apps,
+                        apps,
+                        apps,
+                        siteUse,
+                        apps,
+                        apps);
+    }
+
     /** List APIs omit HZ GPS (zeros). */
     public String selectDetailGpsStubColumns() {
         return """

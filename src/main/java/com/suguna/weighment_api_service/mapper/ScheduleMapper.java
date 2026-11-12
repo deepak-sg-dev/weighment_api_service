@@ -8,6 +8,7 @@ import com.suguna.weighment_api_service.dto.weighment.schedule.PartyContactDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.PhotoRequirementDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleBranchDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleCustomerDto;
+import com.suguna.weighment_api_service.integration.oracle.ScheduleDcAddressSqlClient;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDcDocumentDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDeliveryDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailDto;
@@ -229,6 +230,28 @@ public final class ScheduleMapper {
                 .name(blankToNull(schedule.getTraderName()))
                 .location(blankToNull(schedule.getCustomerLocation()))
                 .build();
+    }
+
+    public static void applyBranchAddress(
+            ScheduleBranchDto branch, ScheduleDcAddressSqlClient.PartyAddress address) {
+        if (branch == null || address == null) {
+            return;
+        }
+        branch.setAddress(address.address());
+        branch.setCity(address.city());
+        branch.setPostalCode(address.postalCode());
+        branch.setState(address.state());
+    }
+
+    public static void applyCustomerAddress(
+            ScheduleCustomerDto customer, ScheduleDcAddressSqlClient.PartyAddress address) {
+        if (customer == null || address == null) {
+            return;
+        }
+        customer.setAddress(address.address());
+        customer.setCity(address.city());
+        customer.setPostalCode(address.postalCode());
+        customer.setState(address.state());
     }
 
     static ScheduleFarmSummaryDto toFarmSummary(LiftingSchedule schedule) {

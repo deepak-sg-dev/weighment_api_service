@@ -19,5 +19,11 @@ public class ScheduleCustomerDto {
 
     private String code;
     private String name;
+    /** Hub / location label from lifting {@code CUS_LOCATION}. */
     private String location;
+    /** HZ ship-to address for DC print (site matching {@link #location} when possible). */
+    private String address;
+    private String city;
+    private String postalCode;
+    private String state;
 }

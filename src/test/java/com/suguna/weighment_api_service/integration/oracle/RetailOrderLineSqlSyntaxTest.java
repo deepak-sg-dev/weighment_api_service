@@ -195,6 +195,15 @@ class RetailOrderLineSqlSyntaxTest {
         assertTrue(!select.contains("longitude , FROM"), select);
     }
 
+    @Test
+    void indentCustomerHzLookupPrefersCusLocationAndHasThreeBinds() {
+        RetailOrderLineSqlSupport sql = new RetailOrderLineSqlSupport(oeRetailProps());
+        String lookup = sql.buildHzIndentCustomerLookupSql().toUpperCase();
+        assertTrue(lookup.contains("HL.ADDRESS1"), lookup);
+        assertTrue(lookup.contains("POSTAL_CODE"), lookup);
+        assertTrue(lookup.contains("WHERE TRIM(TO_CHAR(HCA.ACCOUNT_NUMBER)) = TRIM(?)"), lookup);
+    }
+
     private static OracleErpProperties oeRetailProps() {
         OracleErpProperties props = new OracleErpProperties();
         props.setRetailOrderLinkMode("OE_PO_CHAIN");
