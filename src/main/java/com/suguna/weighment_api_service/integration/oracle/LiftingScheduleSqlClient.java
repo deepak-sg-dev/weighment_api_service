@@ -9,6 +9,7 @@ import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListFilte
 import com.suguna.weighment_api_service.dto.weighment.schedule.StartScheduleRequest;
 import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
+import com.suguna.weighment_api_service.util.VehicleRegistrationSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -147,6 +148,21 @@ public class LiftingScheduleSqlClient {
         this.detailSchedulesSelect = buildDetailSchedulesSelect();
     }
 
+    /** Farm master only — TRIM on lifting side so {@code farm_code} can still use an index. */
+    private static final String FARM_HEADER_JOIN =
+            """
+              LEFT JOIN sug_farm_mst_header f
+                ON f.farm_code = TRIM(o.farmercode)
+            """;
+
+    /** GPS view is expensive; list/start/download skip it. */
+    private static final String FARM_GPS_JOIN =
+            """
+              LEFT JOIN sug_farm_lifting_gps_v v
+                ON v.farm_code = TRIM(o.farmercode)
+               AND v.branch_code = o.branchcode
+            """;
+
     private String buildListSchedulesSelect() {
         return """
             SELECT TO_CHAR(o.erpindentid) AS schedule_id,
@@ -172,19 +188,18 @@ public class LiftingScheduleSqlClient {
                    ,
                    NVL(f.farm_name_village, o.farmername) AS farm_location,
                    o.source AS order_source,
+                   o.customercode AS customer_code,
+                   o.cus_name AS customer_name,
+                   o.cus_location AS customer_location,
             """
                 + MOBILE_STATUS_COLUMNS
                 + """
                    ,
-                   NVL(v.farm_mst_latitude, 0) AS farm_latitude,
-                   NVL(v.farm_mst_longitude, 0) AS farm_longitude
+                   f.latitude AS farm_latitude,
+                   f.longitude AS farm_longitude
               FROM sug_mai_birds_lifting_order o
-              LEFT JOIN sug_farm_mst_header f
-                ON TRIM(f.farm_code) = TRIM(o.farmercode)
-              LEFT JOIN sug_farm_lifting_gps_v v
-                ON v.farm_code = o.farmercode
-               AND v.branch_code = o.branchcode
-            """;
+            """
+                + FARM_HEADER_JOIN;
     }
 
     private String buildDetailSchedulesSelect() {
@@ -224,17 +239,15 @@ public class LiftingScheduleSqlClient {
                    o.farmercode AS farmer_id,
                    f.farmer_name AS farmer_name,
                    o.farmer_mobile_no AS farmer_mobile,
-                   o.customercode AS trader_id,
-                   o.cus_name AS trader_name,
+                   o.customercode AS customer_code,
+                   o.cus_name AS customer_name,
+                   o.cus_location AS customer_location,
                    NVL(o.breed, 'BROILER') AS product_id,
                    NVL(o.breed, 'Broiler') AS product_name
               FROM sug_mai_birds_lifting_order o
-              LEFT JOIN sug_farm_mst_header f
-                ON TRIM(f.farm_code) = TRIM(o.farmercode)
-              LEFT JOIN sug_farm_lifting_gps_v v
-                ON v.farm_code = o.farmercode
-               AND v.branch_code = o.branchcode
-            """;
+            """
+                + FARM_HEADER_JOIN
+                + FARM_GPS_JOIN;
     }
 
     public List<LiftingSchedule> listSchedules(
@@ -250,7 +263,7 @@ public class LiftingScheduleSqlClient {
                 + supervisorEqualityPredicate(supervisorKeys)
                 + " AND NVL(o.application, ?) = ?"
                 + LIST_ORDER_SOURCE_PREDICATE
-                + lookbackPredicate(lookbackDays, filter.requireOrderRequestDate())
+                + lookbackPredicate(lookbackDays)
                 + scheduleIdsPredicate(filter)
                 + buildStatusWhereClause(statuses, includeAllStatuses);
 
@@ -368,7 +381,9 @@ public class LiftingScheduleSqlClient {
         String existingMessage = existingMessages.isEmpty() ? null : existingMessages.get(0);
         String safeMobile = driverMobile == null ? null : driverMobile.trim();
         String message = LiftingDriverMessageSupport.upsertDriverMobile(existingMessage, safeMobile);
-        String safeVehicle = truncateForOracle(vehicleNumber, 32);
+        String safeVehicle = truncateForOracle(
+                VehicleRegistrationSupport.normalizeOrNull(vehicleNumber),
+                VehicleRegistrationSupport.ORACLE_VEHICLENO_MAX);
         String safeDriver = truncateForOracle(driverName, 240);
         String updateSql =
                 """
@@ -431,7 +446,7 @@ public class LiftingScheduleSqlClient {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         int updated = jdbcTemplate.update(
                 START_SCHEDULE_SQL,
-                request.getVehicleRegistration(),
+                VehicleRegistrationSupport.normalizeOrNull(request.getVehicleRegistration()),
                 Timestamp.from(request.getStartedAt()),
                 trimUpdatedBy(supervisorCode),
                 normalizedScheduleId,
@@ -558,18 +573,13 @@ public class LiftingScheduleSqlClient {
         return trimmed.length() > 64 ? trimmed.substring(0, 64) : trimmed;
     }
 
-    private static String lookbackPredicate(int lookbackDays, boolean requireOrderRequestDate) {
+    private static String lookbackPredicate(int lookbackDays) {
         if (lookbackDays <= 0) {
             return "";
         }
-        if (requireOrderRequestDate) {
-            return """
-                 AND o.order_request_date >= TRUNC(SYSDATE) - ?
-                """;
-        }
+        // Always require a date when lookback is on. NULL order_request_date bypass used to scan the full table.
         return """
-             AND (o.order_request_date IS NULL
-                  OR o.order_request_date >= TRUNC(SYSDATE) - ?)
+             AND o.order_request_date >= TRUNC(SYSDATE) - ?
             """;
     }
 
@@ -666,7 +676,7 @@ public class LiftingScheduleSqlClient {
         schedule.setBranchCode(rs.getString("branch_code"));
         schedule.setBranchId(rs.getString("branch_id"));
         schedule.setSalesOrderNo(readLongObject(rs, "sales_order_no"));
-        schedule.setVehicleNumber(rs.getString("vehicle_no"));
+        schedule.setVehicleNumber(VehicleRegistrationSupport.normalizeOrNull(rs.getString("vehicle_no")));
         schedule.setDriverName(rs.getString("driver_name"));
         schedule.setDriverMobile(LiftingDriverMessageSupport.resolveDriverMobile(
                 rs.getString("driver_mobile_column"), rs.getString("lifting_message")));
@@ -688,13 +698,14 @@ public class LiftingScheduleSqlClient {
         schedule.setGeofenceRadiusMeters(erpProperties.getDefaultGeofenceRadiusMeters());
         schedule.setFarmLatitude(rs.getDouble("farm_latitude"));
         schedule.setFarmLongitude(rs.getDouble("farm_longitude"));
+        schedule.setTraderId(rs.getString("customer_code"));
+        schedule.setTraderName(rs.getString("customer_name"));
+        schedule.setCustomerLocation(rs.getString("customer_location"));
 
         if (detail) {
             schedule.setFarmerId(rs.getString("farmer_id"));
             schedule.setFarmerName(rs.getString("farmer_name"));
             schedule.setFarmerMobile(rs.getString("farmer_mobile"));
-            schedule.setTraderId(rs.getString("trader_id"));
-            schedule.setTraderName(rs.getString("trader_name"));
             schedule.setTraderMobile(null);
             schedule.setProductId(rs.getString("product_id"));
             schedule.setProductName(rs.getString("product_name"));

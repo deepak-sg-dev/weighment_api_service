@@ -49,6 +49,16 @@ public class OracleErpProperties {
     /** When false, PO link matches {@code c.orig_sys_document_ref = b.segment1} (ERP reference SQL). */
     private boolean retailPoRequisitionJoinTrim = false;
 
+    /**
+     * MTL {@code mtl_system_items_b.segment1} for CULL lifting (DC HSN/tax). Example ERP item {@code BRCULL}.
+     */
+    private String dcItemCodeCull = "BRCULL";
+
+    /**
+     * MTL {@code segment1} for BROILER lifting. Empty skips item-master lookup until ERP item is confirmed.
+     */
+    private String dcItemCodeBroiler;
+
     public String getApplicationCode() {
         return applicationCode;
     }
@@ -165,5 +175,21 @@ public class OracleErpProperties {
 
     public void setRetailPoRequisitionJoinTrim(boolean retailPoRequisitionJoinTrim) {
         this.retailPoRequisitionJoinTrim = retailPoRequisitionJoinTrim;
+    }
+
+    public String getDcItemCodeCull() {
+        return dcItemCodeCull;
+    }
+
+    public void setDcItemCodeCull(String dcItemCodeCull) {
+        this.dcItemCodeCull = dcItemCodeCull;
+    }
+
+    public String getDcItemCodeBroiler() {
+        return dcItemCodeBroiler;
+    }
+
+    public void setDcItemCodeBroiler(String dcItemCodeBroiler) {
+        this.dcItemCodeBroiler = dcItemCodeBroiler;
     }
 }

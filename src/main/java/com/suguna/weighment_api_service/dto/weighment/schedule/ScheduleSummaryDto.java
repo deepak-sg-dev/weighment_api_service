@@ -17,6 +17,8 @@ public class ScheduleSummaryDto {
     private String deliveryStatus;
     private ScheduleBranchDto branch;
     private ScheduleFarmSummaryDto farm;
+    /** Indent customer from lifting order ({@code CUSTOMERCODE}/{@code CUS_NAME}/{@code CUS_LOCATION}). */
+    private ScheduleCustomerDto customer;
     private int orderCount;
     private List<ScheduleOrderDto> orders;
 
@@ -116,6 +118,14 @@ public class ScheduleSummaryDto {
 
     public void setFarm(ScheduleFarmSummaryDto farm) {
         this.farm = farm;
+    }
+
+    public ScheduleCustomerDto getCustomer() {
+        return customer;
+    }
+
+    public void setCustomer(ScheduleCustomerDto customer) {
+        this.customer = customer;
     }
 
     public ScheduleBranchDto getBranch() {

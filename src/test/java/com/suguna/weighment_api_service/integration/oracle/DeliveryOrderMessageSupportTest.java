@@ -1,5 +1,6 @@
 package com.suguna.weighment_api_service.integration.oracle;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,5 +27,12 @@ class DeliveryOrderMessageSupportTest {
     void mergeWeighment_setsWeighmentFlag() {
         String message = DeliveryOrderMessageSupport.mergeWeighmentPayload(null, "1001", "{}");
         assertTrue(DeliveryOrderMessageSupport.hasWeighmentReceived(message));
+    }
+
+    @Test
+    void parseDeliveredQtyFromCompleteMessageTokens() {
+        String message = "IDEMPOTENCY:k|COMPLETED:t|WT:28.5|BIRDS:30";
+        assertEquals(28.5, DeliveryOrderMessageSupport.parseDeliveredWeightKg(message));
+        assertEquals(30, DeliveryOrderMessageSupport.parseDeliveredBirdCount(message));
     }
 }

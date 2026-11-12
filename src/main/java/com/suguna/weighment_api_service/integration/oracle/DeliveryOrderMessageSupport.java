@@ -53,6 +53,51 @@ final class DeliveryOrderMessageSupport {
         return base;
     }
 
+    /** Delivered kg from complete {@code |WT:} or weighment payload {@code totals.totalNet}. */
+    static Double parseDeliveredWeightKg(String message) {
+        Double fromToken = parseDoubleToken(segmentValue(message, "WT"));
+        if (fromToken != null) {
+            return fromToken;
+        }
+        return parseJsonNumber(segmentValue(message, "PAYLOAD"), "totalNet");
+    }
+
+    /** Delivered birds from complete {@code |BIRDS:} or weighment payload {@code totals.totalBirds}. */
+    static Integer parseDeliveredBirdCount(String message) {
+        Double fromToken = parseDoubleToken(segmentValue(message, "BIRDS"));
+        if (fromToken != null) {
+            return fromToken.intValue();
+        }
+        Double fromJson = parseJsonNumber(segmentValue(message, "PAYLOAD"), "totalBirds");
+        return fromJson == null ? null : fromJson.intValue();
+    }
+
+    private static Double parseDoubleToken(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Double.valueOf(raw.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static Double parseJsonNumber(String json, String field) {
+        if (json == null || json.isBlank() || field == null) {
+            return null;
+        }
+        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)").matcher(json);
+        if (!m.find()) {
+            return null;
+        }
+        try {
+            return Double.valueOf(m.group(1));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
     static boolean hasWeighmentReceived(String message) {
         return flags(message).contains(FLAG_WEIGHMENT);
     }

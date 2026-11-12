@@ -33,6 +33,15 @@ class DeliveryStartUpdateSqlTest {
         assertTrue(normalized.contains("UPDATE SUG.SUG_MAI_RETAIL_ORDER_DTL ROD SET"), sql);
         assertTrue(normalized.contains("EXISTS ( SELECT 1 FROM"), sql);
         assertFalse(normalized.contains("SELECT 1 JOIN"), sql);
+        assertTrue(normalized.contains("TRIM(TO_CHAR(ROD.ORDER_NO)) = TRIM(?)"), sql);
+        assertTrue(normalized.contains("ROH.HEADER_ID = ROD.HEADER_ID"), sql);
+        int dtlCount = 0;
+        int from = 0;
+        while ((from = normalized.indexOf("SUG_MAI_RETAIL_ORDER_DTL", from)) >= 0) {
+            dtlCount++;
+            from += 1;
+        }
+        assertEquals(1, dtlCount, sql);
     }
 
     static String buildStartDeliveryUpdateSql(RetailOrderLineSqlSupport retailOrderSql) {

@@ -7,6 +7,11 @@ public class ScheduleOrderDto {
     private String customerCode;
     private String customerName;
     private double orderedQuantityKg;
+    /** Requested birds from {@code sug_mai_retail_order_dtl.quantity}. */
+    private double orderedBirdCount;
+    /** Delivered kg from DTL {@code delv_weight}. */
+    private Double deliveredQuantityKg;
+    private Integer deliveredBirdCount;
     private String location;
     private Double latitude;
     private Double longitude;
@@ -49,6 +54,30 @@ public class ScheduleOrderDto {
 
     public void setOrderedQuantityKg(double orderedQuantityKg) {
         this.orderedQuantityKg = orderedQuantityKg;
+    }
+
+    public double getOrderedBirdCount() {
+        return orderedBirdCount;
+    }
+
+    public void setOrderedBirdCount(double orderedBirdCount) {
+        this.orderedBirdCount = orderedBirdCount;
+    }
+
+    public Double getDeliveredQuantityKg() {
+        return deliveredQuantityKg;
+    }
+
+    public void setDeliveredQuantityKg(Double deliveredQuantityKg) {
+        this.deliveredQuantityKg = deliveredQuantityKg;
+    }
+
+    public Integer getDeliveredBirdCount() {
+        return deliveredBirdCount;
+    }
+
+    public void setDeliveredBirdCount(Integer deliveredBirdCount) {
+        this.deliveredBirdCount = deliveredBirdCount;
     }
 
     public String getLocation() {

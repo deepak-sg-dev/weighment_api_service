@@ -12,6 +12,10 @@ public class ScheduleDeliveryDto {
     private Double longitude;
     private int geofenceRadiusMeters;
     private double quantityKg;
+    /** Requested birds from {@code sug_mai_retail_order_dtl.quantity}. */
+    private double orderedBirdCount;
+    private Double deliveredQuantityKg;
+    private Integer deliveredBirdCount;
     /** Same as {@link #deliveryStatus}. */
     private String status;
     /** Per-order delivery: PENDING, IN_PROGRESS, COMPLETED. */
@@ -100,6 +104,30 @@ public class ScheduleDeliveryDto {
 
     public void setQuantityKg(double quantityKg) {
         this.quantityKg = quantityKg;
+    }
+
+    public double getOrderedBirdCount() {
+        return orderedBirdCount;
+    }
+
+    public void setOrderedBirdCount(double orderedBirdCount) {
+        this.orderedBirdCount = orderedBirdCount;
+    }
+
+    public Double getDeliveredQuantityKg() {
+        return deliveredQuantityKg;
+    }
+
+    public void setDeliveredQuantityKg(Double deliveredQuantityKg) {
+        this.deliveredQuantityKg = deliveredQuantityKg;
+    }
+
+    public Integer getDeliveredBirdCount() {
+        return deliveredBirdCount;
+    }
+
+    public void setDeliveredBirdCount(Integer deliveredBirdCount) {
+        this.deliveredBirdCount = deliveredBirdCount;
     }
 
     public String getStatus() {

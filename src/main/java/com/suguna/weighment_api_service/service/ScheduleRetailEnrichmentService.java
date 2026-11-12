@@ -5,6 +5,7 @@ import com.suguna.weighment_api_service.constants.WeighmentWorkflowStep;
 import com.suguna.weighment_api_service.domain.RetailScheduleContext;
 import com.suguna.weighment_api_service.dto.weighment.schedule.PartyOtpDetailDto;
 import com.suguna.weighment_api_service.integration.oracle.RetailRetailerOtpResolution;
+import com.suguna.weighment_api_service.integration.oracle.RetailRetailerOtpSupport;
 import com.suguna.weighment_api_service.domain.LiftingSchedule;
 import com.suguna.weighment_api_service.domain.RetailScheduleContext;
 import com.suguna.weighment_api_service.dto.retail.RetailDeliveryOrderSummaryDto;
@@ -17,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -175,6 +177,9 @@ public class ScheduleRetailEnrichmentService {
         dto.setCustomerCode(order.getRetailerId());
         dto.setCustomerName(order.getRetailerName());
         dto.setOrderedQuantityKg(order.getOrderedQuantity());
+        dto.setOrderedBirdCount(order.getOrderedBirdCount());
+        dto.setDeliveredQuantityKg(order.getDeliveredQuantityKg());
+        dto.setDeliveredBirdCount(order.getDeliveredBirdCount());
         dto.setLocation(order.getRetailerAddress());
         dto.setLatitude(order.getRetailerLatitude());
         dto.setLongitude(order.getRetailerLongitude());
@@ -198,17 +203,21 @@ public class ScheduleRetailEnrichmentService {
         dto.setLongitude(nullIfZero(row.location().getLongitude()));
         dto.setGeofenceRadiusMeters(schedule.getGeofenceRadiusMeters());
         dto.setQuantityKg(order.getOrderedQuantity());
+        dto.setOrderedBirdCount(order.getOrderedBirdCount());
+        dto.setDeliveredQuantityKg(order.getDeliveredQuantityKg());
+        dto.setDeliveredBirdCount(order.getDeliveredBirdCount());
         String deliveryStatus = order.getDeliveryStatus() != null
                 ? order.getDeliveryStatus()
                 : mapDeliveryStatus(order.getStatus());
         dto.setStatus(deliveryStatus);
         dto.setDeliveryStatus(deliveryStatus);
         dto.setDeliveryStartedAt(order.getDeliveryStartedAt());
-        dto.setCustomerOtp(buildCustomerOtp(schedule, order.getRetailOrderId()));
+        dto.setCustomerOtp(buildCustomerOtp(schedule, order));
         return dto;
     }
 
-    private PartyOtpDetailDto buildCustomerOtp(LiftingSchedule schedule, String deliveryId) {
+    private PartyOtpDetailDto buildCustomerOtp(
+            LiftingSchedule schedule, RetailDeliveryOrderSummaryDto order) {
         boolean required = scheduleWorkflowService.isDeliveryStepEnabled(
                 schedule.getScheduleId(), WeighmentWorkflowStep.OTP_VALIDATION);
         PartyOtpDetailDto otp = new PartyOtpDetailDto();
@@ -216,14 +225,13 @@ public class ScheduleRetailEnrichmentService {
         if (!otp.isRequired()) {
             return otp;
         }
-        try {
-            RetailScheduleContext context = retailContextFromListRow(schedule, schedule.getSupervisorId());
-            RetailRetailerOtpResolution resolution =
-                    retailDeliveryRepository.resolveRetailerOtp(context, deliveryId);
-            otp.setOtp(resolution.configured() && !resolution.expired() ? resolution.expectedCode() : null);
-        } catch (RuntimeException ex) {
-            otp.setOtp(null);
-        }
+        RetailRetailerOtpResolution resolution = RetailRetailerOtpSupport.resolve(
+                order.getRetailOtp(),
+                order.getRetailOtpExpiresAt(),
+                order.getMessage(),
+                Instant.now(),
+                erpProperties.getRetailOtpStubCode());
+        otp.setOtp(resolution.configured() && !resolution.expired() ? resolution.expectedCode() : null);
         return otp;
     }
 

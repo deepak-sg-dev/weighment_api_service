@@ -1,6 +1,8 @@
 package com.suguna.weighment_api_service.service;
 
+import com.suguna.weighment_api_service.config.OracleErpProperties;
 import com.suguna.weighment_api_service.constants.ErrorCode;
+import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDcDocumentDto;
 import com.suguna.weighment_api_service.constants.ScheduleStatus;
 import com.suguna.weighment_api_service.domain.LiftingSchedule;
 import com.suguna.weighment_api_service.dto.weighment.schedule.MarkScheduleDownloadedRequest;
@@ -19,8 +21,10 @@ import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailDto;
 import com.suguna.weighment_api_service.integration.oracle.ScheduleOtpSqlClient;
 import com.suguna.weighment_api_service.mapper.ScheduleMapper;
+import com.suguna.weighment_api_service.repository.ItemGstRepository;
 import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
+import com.suguna.weighment_api_service.util.DcItemCodeSupport;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import org.springframework.stereotype.Service;
 
@@ -35,16 +39,22 @@ public class ScheduleService {
     private final ScheduleRetailEnrichmentService retailEnrichmentService;
     private final ScheduleOtpSqlClient scheduleOtpSqlClient;
     private final ScheduleWorkflowService scheduleWorkflowService;
+    private final ItemGstRepository itemGstRepository;
+    private final OracleErpProperties erpProperties;
 
     public ScheduleService(
             ScheduleRepository scheduleRepository,
             ScheduleRetailEnrichmentService retailEnrichmentService,
             ScheduleOtpSqlClient scheduleOtpSqlClient,
-            ScheduleWorkflowService scheduleWorkflowService) {
+            ScheduleWorkflowService scheduleWorkflowService,
+            ItemGstRepository itemGstRepository,
+            OracleErpProperties erpProperties) {
         this.scheduleRepository = scheduleRepository;
         this.retailEnrichmentService = retailEnrichmentService;
         this.scheduleOtpSqlClient = scheduleOtpSqlClient;
         this.scheduleWorkflowService = scheduleWorkflowService;
+        this.itemGstRepository = itemGstRepository;
+        this.erpProperties = erpProperties;
     }
 
     public ScheduleListResponse getAssignedSchedules(
@@ -111,6 +121,7 @@ public class ScheduleService {
             detail.setOtp(ScheduleMapper.emptyOtpDetail(schedule, saleType, scheduleWorkflowService));
         }
         detail.setWorkflow(scheduleWorkflowService.resolveForSaleType(saleType));
+        applyItemGstToDc(detail, schedule);
         return ScheduleDetailResponse.success(detail);
     }
 
@@ -198,6 +209,39 @@ public class ScheduleService {
             return "PENDING";
         }
         return retailAggregated;
+    }
+
+    private void applyItemGstToDc(ScheduleDetailDto detail, LiftingSchedule schedule) {
+        String itemCode = DcItemCodeSupport.resolveSegment1(schedule, erpProperties);
+        Long organizationId = DcItemCodeSupport.parseOrganizationId(schedule.getBranchId());
+        String breed = firstNonBlank(schedule.getProductName(), schedule.getOperationType());
+        itemGstRepository
+                .find(itemCode, organizationId, schedule.getBranchCode(), breed)
+                .ifPresent(info -> {
+                    ScheduleDcDocumentDto dc = detail.getDc();
+                    if (dc == null) {
+                        dc = ScheduleDcDocumentDto.empty();
+                        detail.setDc(dc);
+                    }
+                    if (info.hsnCode() != null) {
+                        dc.setHsnCode(info.hsnCode());
+                    }
+                    if (info.taxCode() != null) {
+                        dc.setTaxCode(info.taxCode());
+                    }
+                });
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return null;
     }
 
     private static boolean liftingAllowsRetailDeliveryProgress(LiftingSchedule schedule) {

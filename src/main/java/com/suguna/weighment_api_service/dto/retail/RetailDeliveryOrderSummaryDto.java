@@ -20,6 +20,9 @@ public class RetailDeliveryOrderSummaryDto {
     private String salesOrderNo;
     private double orderedQuantity;
     private int orderedBirdCount;
+    /** Delivered kg from DTL {@code message} ({@code WT} / weighment payload), not DTL {@code quantity}. */
+    private Double deliveredQuantityKg;
+    private Integer deliveredBirdCount;
     /** Same as {@link #deliveryStatus}; kept for backward compatibility. */
     private String status;
     /** Per-order delivery: PENDING, IN_PROGRESS, COMPLETED. */
@@ -32,4 +35,9 @@ public class RetailDeliveryOrderSummaryDto {
     private Double retailerLongitude;
     /** Vehicle for this shop delivery leg (may differ from schedule lifting vehicle). */
     private ScheduleVehicleDto deliveryVehicle;
+
+    /** Shop OTP from DTL / message (schedule detail only; not used on list). */
+    private String retailOtp;
+    private java.time.Instant retailOtpExpiresAt;
+    private String message;
 }

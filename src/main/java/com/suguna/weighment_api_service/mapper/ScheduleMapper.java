@@ -7,6 +7,8 @@ import com.suguna.weighment_api_service.dto.weighment.schedule.FarmDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.PartyContactDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.PhotoRequirementDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleBranchDto;
+import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleCustomerDto;
+import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDcDocumentDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDeliveryDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleFarmSummaryDto;
@@ -60,6 +62,7 @@ public final class ScheduleMapper {
         summary.setDeliveryStatus(deliveryStatus);
         summary.setBranch(toBranch(schedule, supervisor));
         summary.setFarm(farm);
+        summary.setCustomer(toCustomer(schedule));
         summary.setOrderCount(safeOrders.size());
         summary.setOrders(safeOrders);
         return summary;
@@ -128,8 +131,10 @@ public final class ScheduleMapper {
         detail.setSupervisor(scheduleSupervisor);
         detail.setFarm(farm);
         detail.setFarmer(farmer);
+        detail.setCustomer(toCustomer(schedule));
         detail.setRules(rules);
         detail.setDeliveries(safeDeliveries);
+        detail.setDc(toDcDocument(schedule));
         return detail;
     }
 
@@ -209,6 +214,23 @@ public final class ScheduleMapper {
         return instant.atZone(INDIA).format(SCHEDULED_AT);
     }
 
+    /**
+     * DC print payload. Only {@code breedStrain} is filled from current lifting row when product/bird type exists;
+     * remaining keys stay null until ERP/admin is wired.
+     */
+    static ScheduleDcDocumentDto toDcDocument(LiftingSchedule schedule) {
+        String breed = firstNonBlank(schedule.getProductName(), mapBirdType(schedule));
+        return ScheduleDcDocumentDto.builder().breedStrain(blankToNull(breed)).build();
+    }
+
+    static ScheduleCustomerDto toCustomer(LiftingSchedule schedule) {
+        return ScheduleCustomerDto.builder()
+                .code(blankToNull(schedule.getTraderId()))
+                .name(blankToNull(schedule.getTraderName()))
+                .location(blankToNull(schedule.getCustomerLocation()))
+                .build();
+    }
+
     static ScheduleFarmSummaryDto toFarmSummary(LiftingSchedule schedule) {
         ScheduleFarmSummaryDto farm = new ScheduleFarmSummaryDto();
         farm.setId(schedule.getFarmId());
@@ -260,5 +282,21 @@ public final class ScheduleMapper {
 
     private static Double nullIfZero(double value) {
         return value == 0D ? null : value;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

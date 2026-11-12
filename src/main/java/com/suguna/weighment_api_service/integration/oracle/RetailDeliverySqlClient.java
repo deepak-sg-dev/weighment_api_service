@@ -15,7 +15,9 @@ import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -115,8 +117,15 @@ public class RetailDeliverySqlClient {
                         rod.uploaded_flag = 'Y',
                            rod.message = ?,
                            rod.uploaded_date = SYSDATE,
-                           rod.weight = NVL(?, rod.weight),
-                           rod.quantity = NVL(?, rod.quantity)"""
+                           rod."""
+                        + OracleErpColumns.DELV_WEIGHT
+                        + " = NVL(?, rod."
+                        + OracleErpColumns.DELV_WEIGHT
+                        + "),\n                           rod."
+                        + OracleErpColumns.DELV_QUANTITY
+                        + " = NVL(?, rod."
+                        + OracleErpColumns.DELV_QUANTITY
+                        + ")"
                         + retailOrderSql.buildMarkRetailOtpVerifiedSetSuffix()
                         + "\n"
                         + RetailOrderLineSqlSupport.updateWhereClause()
@@ -215,15 +224,6 @@ public class RetailDeliverySqlClient {
         if (normalizedIds.isEmpty()) {
             return Map.of();
         }
-        if (normalizedIds.size() == 1) {
-            String only = normalizedIds.get(0);
-            List<RetailDeliveryOrderSummaryDto> orders = listDeliveryOrders(singleScheduleContext(supervisorCode, only));
-            if (orders.isEmpty()) {
-                return Map.of();
-            }
-            return Map.of(only, orders);
-        }
-
         String sql = listRetailOrdersBatchSql(normalizedIds.size());
         Object[] args = scheduleReadBindArgsBatch(normalizedIds);
         Map<String, List<RetailDeliveryOrderSummaryDto>> grouped = new LinkedHashMap<>();
@@ -235,33 +235,79 @@ public class RetailDeliverySqlClient {
                             .add(mapSummary(rs, scheduleKey));
                 },
                 args);
+        applyHzCustomerProfiles(grouped);
         return grouped;
     }
 
-    private RetailScheduleContext singleScheduleContext(String supervisorCode, String scheduleId) {
-        return RetailScheduleContext.builder()
-                .scheduleId(scheduleId)
-                .supervisorCode(supervisorCode)
-                .regionCode(null)
-                .retailBranchCode("")
-                .orderDate(null)
-                .internalPoNumber(null)
-                .build();
-    }
-
     private String listRetailOrdersBatchSql(int scheduleCount) {
-        return retailOrderSql.selectDetailListSqlPrefix()
+        return retailOrderSql.selectDetailListSqlPrefix(false)
                 + retailOrderSql.selectDelvStatusColumn()
                 + retailOrderSql.selectDelvStartedColumn()
                 + retailOrderSql.selectRetailOtpColumns()
                 + retailOrderSql.selectDeliveryVehicleColumns()
-                + retailOrderSql.selectDetailGpsColumns()
-                + retailOrderSql.fromScheduleToDetailJoin()
+                + retailOrderSql.selectDetailGpsStubColumns()
+                + retailOrderSql.fromScheduleToDetailJoinWithoutHz()
                 + retailOrderSql.whereLiftingSchedulesScopeForRetail(scheduleCount, false)
                 + """
              ORDER BY e.erpindentid, rod.order_no DESC
             """;
     }
+
+    private void applyHzCustomerProfiles(Map<String, List<RetailDeliveryOrderSummaryDto>> grouped) {
+        if (!erpProperties.isRetailCustomerFromHzSiteEnabled() || grouped.isEmpty()) {
+            return;
+        }
+        Set<String> codes = new LinkedHashSet<>();
+        grouped.values().forEach(orders -> orders.forEach(order -> {
+            if (order.getRetailerId() != null && !order.getRetailerId().isBlank()) {
+                codes.add(order.getRetailerId().trim());
+            }
+        }));
+        if (codes.isEmpty()) {
+            return;
+        }
+        Map<String, HzCustomerProfile> profiles = lookupHzCustomerProfiles(codes);
+        if (profiles.isEmpty()) {
+            return;
+        }
+        grouped.values().forEach(orders -> orders.forEach(order -> {
+            if (order.getRetailerId() == null) {
+                return;
+            }
+            HzCustomerProfile profile = profiles.get(order.getRetailerId().trim());
+            if (profile == null) {
+                return;
+            }
+            order.setRetailerName(profile.name());
+            order.setRetailerAddress(profile.address());
+            order.setRetailerLatitude(nullIfZero(profile.latitude()));
+            order.setRetailerLongitude(nullIfZero(profile.longitude()));
+        }));
+    }
+
+    private Map<String, HzCustomerProfile> lookupHzCustomerProfiles(Set<String> customerCodes) {
+        Map<String, HzCustomerProfile> profiles = new LinkedHashMap<>();
+        List<String> codes = new ArrayList<>(customerCodes);
+        int chunkSize = 200;
+        for (int start = 0; start < codes.size(); start += chunkSize) {
+            List<String> chunk = codes.subList(start, Math.min(start + chunkSize, codes.size()));
+            jdbcTemplate.query(
+                    retailOrderSql.buildHzCustomerLookupSql(chunk.size()),
+                    rs -> {
+                        profiles.put(
+                                rs.getString("customer_code"),
+                                new HzCustomerProfile(
+                                        rs.getString("customer_name"),
+                                        rs.getString("address"),
+                                        rs.getDouble("retailer_latitude"),
+                                        rs.getDouble("retailer_longitude")));
+                    },
+                    chunk.toArray());
+        }
+        return profiles;
+    }
+
+    private record HzCustomerProfile(String name, String address, double latitude, double longitude) {}
 
     private Object[] scheduleReadBindArgsBatch(List<String> normalizedScheduleIds) {
         List<Object> args = new ArrayList<>(normalizedScheduleIds.size() * 2 + 3);
@@ -584,6 +630,8 @@ public class RetailDeliverySqlClient {
                 .salesOrderNo(row.orderNo())
                 .orderedQuantity(row.weight())
                 .orderedBirdCount(row.quantity())
+                .deliveredQuantityKg(firstDeliveredKg(row))
+                .deliveredBirdCount(firstDeliveredBirds(row))
                 .deliveryStatus(presentation.deliveryStatus())
                 .deliveryStartedAt(presentation.deliveryStartedAt())
                 .status(presentation.deliveryStatus())
@@ -591,6 +639,9 @@ public class RetailDeliverySqlClient {
                 .retailerLatitude(nullIfZero(row.latitude()))
                 .retailerLongitude(nullIfZero(row.longitude()))
                 .deliveryVehicle(deliveryVehicleDto(row))
+                .retailOtp(row.retailOtp())
+                .retailOtpExpiresAt(row.retailOtpExpiresAt())
+                .message(row.message())
                 .build();
     }
 
@@ -619,6 +670,8 @@ public class RetailDeliverySqlClient {
                 .itemName(row.itemName())
                 .orderedQuantity(row.weight())
                 .orderedBirdCount(row.quantity())
+                .deliveredQuantityKg(firstDeliveredKg(row))
+                .deliveredBirdCount(firstDeliveredBirds(row))
                 .deliveryStatus(presentation.deliveryStatus())
                 .deliveryStartedAt(presentation.deliveryStartedAt())
                 .status(presentation.deliveryStatus())
@@ -659,6 +712,8 @@ public class RetailDeliverySqlClient {
                 rs.getString("customer_code"),
                 rs.getDouble("weight"),
                 rs.getInt("quantity"),
+                readNullableDouble(rs, "delivered_weight"),
+                readNullableInteger(rs, "delivered_quantity"),
                 rs.getString("item_name"),
                 rs.getString("uploaded_flag"),
                 rs.getString("message"),
@@ -749,11 +804,37 @@ public class RetailDeliverySqlClient {
         }
     }
 
+    private static Double firstDeliveredKg(RetailOrderRow row) {
+        if (row.deliveredWeight() != null) {
+            return row.deliveredWeight();
+        }
+        return DeliveryOrderMessageSupport.parseDeliveredWeightKg(row.message());
+    }
+
+    private static Integer firstDeliveredBirds(RetailOrderRow row) {
+        if (row.deliveredQuantity() != null) {
+            return row.deliveredQuantity();
+        }
+        return DeliveryOrderMessageSupport.parseDeliveredBirdCount(row.message());
+    }
+
+    private static Double readNullableDouble(ResultSet rs, String column) throws SQLException {
+        double value = rs.getDouble(column);
+        return rs.wasNull() ? null : value;
+    }
+
+    private static Integer readNullableInteger(ResultSet rs, String column) throws SQLException {
+        int value = rs.getInt(column);
+        return rs.wasNull() ? null : value;
+    }
+
     private record RetailOrderRow(
             String orderNo,
             String customerCode,
             double weight,
             int quantity,
+            Double deliveredWeight,
+            Integer deliveredQuantity,
             String itemName,
             String uploadedFlag,
             String message,

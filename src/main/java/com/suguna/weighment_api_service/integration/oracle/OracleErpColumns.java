@@ -8,6 +8,7 @@ public final class OracleErpColumns {
 
     public static final String RETAIL_ORDER_HDR = "SUG_MAI_RETAIL_ORDER_HDR";
     public static final String RETAIL_ORDER_DTL = "SUG_MAI_RETAIL_ORDER_DTL";
+    public static final String NTAIL_ORDER = "SUG_MAI_NTAIL_ORDER";
     public static final String RETAIL_HDR_LIFTING_MATCH = "REQ_HEADER_ID";
 
     public static final String RETAIL_OTP = "RETAIL_OTP";
@@ -17,6 +18,9 @@ public final class OracleErpColumns {
     public static final String DELV_STATUS = "DELV_STATUS";
     public static final String DELV_START_DT = "DELV_START_DT";
     public static final String DELV_END_DT = "DELV_END_DT";
+
+    public static final String DELV_QUANTITY = "DELV_QUANTITY";
+    public static final String DELV_WEIGHT = "DELV_WEIGHT";
 
     public static final String DELV_VEHICLE_NO = "DELV_VEHICLE_NO";
     public static final String DELV_DRIVER = "DELV_DRIVER";

@@ -39,6 +39,7 @@ public class DeliveryWeighmentSqlClient {
     private final WeighmentDetailSqlClient weighmentDetailSqlClient;
     private final WeighmentHeaderSqlClient weighmentHeaderSqlClient;
     private final String updateOrderMessageSql;
+    private final String updateDeliveredQtySql;
     private final String startDeliveryOrderSql;
     private final String orderCompleteSql;
     private final String loadOrderStateSql;
@@ -62,6 +63,14 @@ public class DeliveryWeighmentSqlClient {
         this.updateOrderMessageSql =
                 retailOrderSql.buildDetailUpdatePrefix()
                         + retailOrderSql.buildMessageUpdateSetClause()
+                        + RetailOrderLineSqlSupport.updateWhereClause()
+                        + RetailOrderLineSqlSupport.whereDetailOrderNo()
+                        + retailOrderSql.andDetailCustomerCodeFilter().trim()
+                        + " AND "
+                        + existsSchedule;
+        this.updateDeliveredQtySql =
+                retailOrderSql.buildDetailUpdatePrefix()
+                        + retailOrderSql.buildDeliveredQtyUpdateSetClause()
                         + RetailOrderLineSqlSupport.updateWhereClause()
                         + RetailOrderLineSqlSupport.whereDetailOrderNo()
                         + retailOrderSql.andDetailCustomerCodeFilter().trim()
@@ -113,7 +122,15 @@ public class DeliveryWeighmentSqlClient {
         for (Object bind : retailDeliverySqlClient.scheduleBindArgs(schedule)) {
             startArgs.add(bind);
         }
-        jdbcTemplate.update(startDeliveryOrderSql, startArgs.toArray());
+        int updated = jdbcTemplate.update(startDeliveryOrderSql, startArgs.toArray());
+        if (updated == 0) {
+            throw new ResourceNotFoundException("Retail delivery order", orderId);
+        }
+        if (updated > 1) {
+            throw new ConflictException(
+                    ErrorCode.CONFLICT,
+                    "Delivery start matched " + updated + " shop lines; expected only order " + orderId);
+        }
 
         syncLiftingDeliveryStatus(schedule);
         return startResponse(schedule.getScheduleId(), orderId, startedAt, false);
@@ -133,17 +150,17 @@ public class DeliveryWeighmentSqlClient {
         boolean dtlStored = weighmentDetailSqlClient.hasDeliveryDetailLines(deliveryKey);
         boolean weighmentInMessage = DeliveryOrderMessageSupport.hasWeighmentReceived(state.message());
         boolean orderClosed = RetailOrderDeliveryStatus.isDeliveryComplete(state.uploadedFlag(), state.message());
+        Double netWeight = request.getTotals() != null ? request.getTotals().getTotalNet() : null;
+        Integer totalBirds = request.getTotals() != null ? request.getTotals().getTotalBirds() : null;
 
         if (!weighmentInMessage && !orderClosed) {
             String payloadJson = serializePayload(request);
             String newMessage =
                     DeliveryOrderMessageSupport.mergeWeighmentPayload(state.message(), orderId, payloadJson);
-
-            Double netWeight = request.getTotals() != null ? request.getTotals().getTotalNet() : null;
-            Integer totalBirds = request.getTotals() != null ? request.getTotals().getTotalBirds() : null;
-
             updateOrder(schedule, order.getRetailerId(), orderId, newMessage, netWeight, totalBirds);
             maybeMarkComplete(schedule, orderId, newMessage);
+        } else if (netWeight != null || totalBirds != null) {
+            updateDeliveredQuantities(schedule, order.getRetailerId(), orderId, netWeight, totalBirds);
         }
 
         if (!dtlStored) {
@@ -292,16 +309,34 @@ public class DeliveryWeighmentSqlClient {
             String customerCode,
             String orderId,
             String message,
-            Double weight,
-            Integer quantity) {
+            Double deliveredWeight,
+            Integer deliveredQuantity) {
         Object[] args = new Object[5 + 7];
         args[0] = message;
-        args[1] = weight;
-        args[2] = quantity;
+        args[1] = deliveredWeight;
+        args[2] = deliveredQuantity;
         args[3] = orderId;
         args[4] = customerCode;
         System.arraycopy(retailDeliverySqlClient.scheduleBindArgs(schedule), 0, args, 5, 7);
         int updated = jdbcTemplate.update(updateOrderMessageSql, args);
+        if (updated == 0) {
+            throw new ResourceNotFoundException("Retail delivery order", orderId);
+        }
+    }
+
+    private void updateDeliveredQuantities(
+            RetailScheduleContext schedule,
+            String customerCode,
+            String orderId,
+            Double deliveredWeight,
+            Integer deliveredQuantity) {
+        Object[] args = new Object[4 + 7];
+        args[0] = deliveredWeight;
+        args[1] = deliveredQuantity;
+        args[2] = orderId;
+        args[3] = customerCode;
+        System.arraycopy(retailDeliverySqlClient.scheduleBindArgs(schedule), 0, args, 4, 7);
+        int updated = jdbcTemplate.update(updateDeliveredQtySql, args);
         if (updated == 0) {
             throw new ResourceNotFoundException("Retail delivery order", orderId);
         }

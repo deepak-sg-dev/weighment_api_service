@@ -30,6 +30,8 @@ public class LiftingSchedule {
     private String traderId;
     private String traderName;
     private String traderMobile;
+    /** {@code SUG_MAI_BIRDS_LIFTING_ORDER.CUS_LOCATION}. */
+    private String customerLocation;
     private String productId;
     private String productName;
     private int plannedQuantity;
@@ -239,6 +241,14 @@ public class LiftingSchedule {
 
     public void setTraderMobile(String traderMobile) {
         this.traderMobile = traderMobile;
+    }
+
+    public String getCustomerLocation() {
+        return customerLocation;
+    }
+
+    public void setCustomerLocation(String customerLocation) {
+        this.customerLocation = customerLocation;
     }
 
     public String getProductId() {

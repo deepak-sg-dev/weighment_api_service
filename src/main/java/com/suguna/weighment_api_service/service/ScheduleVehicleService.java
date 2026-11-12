@@ -12,6 +12,7 @@ import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
+import com.suguna.weighment_api_service.util.VehicleRegistrationSupport;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -39,17 +40,23 @@ public class ScheduleVehicleService {
         LiftingSchedule schedule = loadScheduleForUpdate(supervisor, scheduleId);
         ensureMutable(schedule);
         UpdateScheduleVehicleRequest.VehiclePayload vehicle = request.getVehicle();
+        String plate = VehicleRegistrationSupport.normalizeOrNull(vehicle.getNumber());
+        if (plate == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "vehicle number is required (ERP placeholder '-' is not stored)");
+        }
         String normalized = ScheduleIdSupport.normalize(scheduleId);
         String supervisorCode = supervisor.getSupervisor().getCode();
         scheduleRepository.updateVehicle(
                 supervisorCode,
                 normalized,
-                vehicle.getNumber().trim().toUpperCase(),
+                plate,
                 vehicle.getDriverName().trim(),
                 vehicle.getDriverMobile().trim(),
                 supervisorCode);
         ScheduleVehicleDto dto = new ScheduleVehicleDto();
-        dto.setNumber(vehicle.getNumber().trim().toUpperCase());
+        dto.setNumber(plate);
         dto.setDriverName(vehicle.getDriverName().trim());
         dto.setDriverMobile(vehicle.getDriverMobile().trim());
         return UpdateScheduleVehicleResponse.builder()

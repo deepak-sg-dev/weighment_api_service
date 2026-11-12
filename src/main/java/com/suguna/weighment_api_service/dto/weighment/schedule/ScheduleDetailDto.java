@@ -22,10 +22,14 @@ public class ScheduleDetailDto {
     private ScheduleSupervisorDto supervisor;
     private FarmDto farm;
     private PartyContactDto farmer;
+    /** Indent customer from lifting order ({@code CUSTOMERCODE}/{@code CUS_NAME}/{@code CUS_LOCATION}). */
+    private ScheduleCustomerDto customer;
     private ScheduleRulesDto rules;
     private List<ScheduleDeliveryDto> deliveries;
     private ScheduleOtpDetailDto otp;
     private ScheduleWorkflowDto workflow;
+    /** Optional DC print fields (slip, HSN, GST, bank, etc.). Keys are always present; values may be null. */
+    private ScheduleDcDocumentDto dc;
 
     public ScheduleDetailDto() {}
 
@@ -173,6 +177,14 @@ public class ScheduleDetailDto {
         this.farmer = farmer;
     }
 
+    public ScheduleCustomerDto getCustomer() {
+        return customer;
+    }
+
+    public void setCustomer(ScheduleCustomerDto customer) {
+        this.customer = customer;
+    }
+
     public ScheduleRulesDto getRules() {
         return rules;
     }
@@ -203,5 +215,13 @@ public class ScheduleDetailDto {
 
     public void setWorkflow(ScheduleWorkflowDto workflow) {
         this.workflow = workflow;
+    }
+
+    public ScheduleDcDocumentDto getDc() {
+        return dc;
+    }
+
+    public void setDc(ScheduleDcDocumentDto dc) {
+        this.dc = dc;
     }
 }
