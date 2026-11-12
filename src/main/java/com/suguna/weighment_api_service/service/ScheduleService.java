@@ -26,6 +26,7 @@ import com.suguna.weighment_api_service.repository.ItemGstRepository;
 import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.util.DcItemCodeSupport;
+import com.suguna.weighment_api_service.util.RegisteredOfficeAddressSupport;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import org.springframework.stereotype.Service;
 
@@ -219,13 +220,40 @@ public class ScheduleService {
     private void applyDcAddresses(ScheduleDetailDto detail, LiftingSchedule schedule) {
         scheduleDcAddressSqlClient
                 .findBranchAddress(schedule.getBranchId(), schedule.getBranchCode())
-                .ifPresent(address -> ScheduleMapper.applyBranchAddress(detail.getBranch(), address));
+                .ifPresent(address -> {
+                    ScheduleMapper.applyBranchAddress(detail.getBranch(), address);
+                    if (address.regionCode() != null) {
+                        ScheduleMapper.applyDcRegionCompany(ensureDc(detail), address.regionCode(), null);
+                    }
+                });
+        scheduleDcAddressSqlClient
+                .findRegisteredOffice(schedule.getBranchId(), schedule.getBranchCode())
+                .map(RegisteredOfficeAddressSupport::parse)
+                .ifPresent(office -> ScheduleMapper.applyRegisteredOffice(ensureDc(detail), office));
         if (detail.getCustomer() == null || detail.getCustomer().getCode() == null) {
             return;
         }
         scheduleDcAddressSqlClient
                 .findIndentCustomerAddress(detail.getCustomer().getCode(), detail.getCustomer().getLocation())
-                .ifPresent(address -> ScheduleMapper.applyCustomerAddress(detail.getCustomer(), address));
+                .ifPresent(address -> {
+                    ScheduleMapper.applyCustomerAddress(detail.getCustomer(), address);
+                    if (address.gstNo() == null) {
+                        return;
+                    }
+                    ScheduleDcDocumentDto dc = ensureDc(detail);
+                    if (dc.getTraderGstNo() == null) {
+                        dc.setTraderGstNo(address.gstNo());
+                    }
+                });
+    }
+
+    private static ScheduleDcDocumentDto ensureDc(ScheduleDetailDto detail) {
+        ScheduleDcDocumentDto dc = detail.getDc();
+        if (dc == null) {
+            dc = ScheduleDcDocumentDto.empty();
+            detail.setDc(dc);
+        }
+        return dc;
     }
 
     private void applyItemGstToDc(ScheduleDetailDto detail, LiftingSchedule schedule) {
@@ -235,11 +263,7 @@ public class ScheduleService {
         itemGstRepository
                 .find(itemCode, organizationId, schedule.getBranchCode(), breed)
                 .ifPresent(info -> {
-                    ScheduleDcDocumentDto dc = detail.getDc();
-                    if (dc == null) {
-                        dc = ScheduleDcDocumentDto.empty();
-                        detail.setDc(dc);
-                    }
+                    ScheduleDcDocumentDto dc = ensureDc(detail);
                     if (info.hsnCode() != null) {
                         dc.setHsnCode(info.hsnCode());
                     }

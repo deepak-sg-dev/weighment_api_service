@@ -178,6 +178,9 @@ class RetailOrderLineSqlSyntaxTest {
         String gps = sql.selectDetailGpsColumns().replaceAll("\\s+", " ").toUpperCase();
         assertTrue(!gps.contains("NVL(HCAS_ORD.ATTRIBUTE11, 0)"), gps);
         assertTrue(gps.contains("TO_NUMBER(TRIM(TO_CHAR(HCAS_ORD.ATTRIBUTE11)))"), gps);
+        assertTrue(
+                gps.contains("SUG_GST_PKG.GET_REG_NO('GSTN', 'CS', HCAS_ORD.CUST_ACCT_SITE_ID, SYSDATE)"),
+                gps);
     }
 
     @Test
@@ -191,7 +194,8 @@ class RetailOrderLineSqlSyntaxTest {
                         + sql.fromScheduleToDetailJoin())
                 .replaceAll("\\s+", " ")
                 .trim();
-        assertTrue(select.matches("(?is).+ retailer_longitude FROM .+"), select);
+        assertTrue(select.matches("(?is).+ customer_gstn FROM .+"), select);
+        assertTrue(select.contains("retailer_longitude"), select);
         assertTrue(!select.contains("longitude , FROM"), select);
     }
 
@@ -201,6 +205,7 @@ class RetailOrderLineSqlSyntaxTest {
         String lookup = sql.buildHzIndentCustomerLookupSql().toUpperCase();
         assertTrue(lookup.contains("HL.ADDRESS1"), lookup);
         assertTrue(lookup.contains("POSTAL_CODE"), lookup);
+        assertTrue(lookup.contains("SUG_GST_PKG.GET_REG_NO('GSTN', 'CS', HCAS.CUST_ACCT_SITE_ID, SYSDATE)"), lookup);
         assertTrue(lookup.contains("WHERE TRIM(TO_CHAR(HCA.ACCOUNT_NUMBER)) = TRIM(?)"), lookup);
     }
 

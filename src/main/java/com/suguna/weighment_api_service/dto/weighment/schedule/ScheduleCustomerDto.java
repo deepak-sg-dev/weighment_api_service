@@ -26,4 +26,6 @@ public class ScheduleCustomerDto {
     private String city;
     private String postalCode;
     private String state;
+    /** From {@code sug_gst_pkg.get_reg_no('GSTN','CS', cust_acct_site_id, SYSDATE)}. */
+    private String gstNo;
 }

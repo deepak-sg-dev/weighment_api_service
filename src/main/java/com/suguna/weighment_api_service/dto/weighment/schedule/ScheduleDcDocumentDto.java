@@ -30,10 +30,18 @@ public class ScheduleDcDocumentDto {
     private BigDecimal taxRatePercent;
     private String traderGstNo;
     private String placeOfSupply;
+    /** Branch region code from {@code sug_organization_mv.region_code} (e.g. {@code AS}). */
+    private String region;
+    /** Legal entity from registered office (e.g. {@code SUGUNA FOODS PRIVATE LIMITED}). */
+    private String company;
+    /** Print line {@code region-company}, e.g. {@code AS-SUGUNA FOODS PRIVATE LIMITED}. */
+    private String regionCompany;
     /** Breed / strain (often same as bird type / product). */
     private String breedStrain;
     private String cinNo;
     private String panNo;
+    /** From {@code sug_fnd_pkg.get_reg_off_address(ledger_id)}. */
+    private ScheduleDcRegisteredOfficeDto registeredOffice;
     /** Bank name / “BANK DETAILS” on the printed DC. */
     private String bankDetails;
     private String bankBranch;

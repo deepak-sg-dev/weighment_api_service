@@ -7,6 +7,8 @@ public class ScheduleDeliveryDto {
     private String dropPointName;
     private String customerCode;
     private String customerName;
+    /** Shop GSTIN from {@code sug_gst_pkg.get_reg_no('GSTN','CS', cust_acct_site_id, SYSDATE)}. */
+    private String gstNo;
     private String location;
     private Double latitude;
     private Double longitude;
@@ -64,6 +66,14 @@ public class ScheduleDeliveryDto {
 
     public void setCustomerName(String customerName) {
         this.customerName = customerName;
+    }
+
+    public String getGstNo() {
+        return gstNo;
+    }
+
+    public void setGstNo(String gstNo) {
+        this.gstNo = gstNo;
     }
 
     public String getLocation() {

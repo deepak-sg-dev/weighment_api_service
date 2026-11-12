@@ -59,6 +59,12 @@ public class OracleErpProperties {
      */
     private String dcItemCodeBroiler;
 
+    /**
+     * Fallback {@code sug_fnd_pkg.get_reg_off_address(p_ledger_id)} when the lifting branch has no
+     * {@code sug_organization_mv.ledger_id}. M47 / branch 689 uses {@code 2025}.
+     */
+    private Long dcRegisteredOfficeLedgerId = 2025L;
+
     public String getApplicationCode() {
         return applicationCode;
     }
@@ -191,5 +197,13 @@ public class OracleErpProperties {
 
     public void setDcItemCodeBroiler(String dcItemCodeBroiler) {
         this.dcItemCodeBroiler = dcItemCodeBroiler;
+    }
+
+    public Long getDcRegisteredOfficeLedgerId() {
+        return dcRegisteredOfficeLedgerId;
+    }
+
+    public void setDcRegisteredOfficeLedgerId(Long dcRegisteredOfficeLedgerId) {
+        this.dcRegisteredOfficeLedgerId = dcRegisteredOfficeLedgerId;
     }
 }

@@ -6,6 +6,8 @@ public class ScheduleOrderDto {
     private String orderNo;
     private String customerCode;
     private String customerName;
+    /** Shop GSTIN from {@code sug_gst_pkg.get_reg_no('GSTN','CS', cust_acct_site_id, SYSDATE)}. */
+    private String gstNo;
     private double orderedQuantityKg;
     /** Requested birds from {@code sug_mai_retail_order_dtl.quantity}. */
     private double orderedBirdCount;
@@ -46,6 +48,14 @@ public class ScheduleOrderDto {
 
     public void setCustomerName(String customerName) {
         this.customerName = customerName;
+    }
+
+    public String getGstNo() {
+        return gstNo;
+    }
+
+    public void setGstNo(String gstNo) {
+        this.gstNo = gstNo;
     }
 
     public double getOrderedQuantityKg() {

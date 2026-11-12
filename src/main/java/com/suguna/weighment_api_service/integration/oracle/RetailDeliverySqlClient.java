@@ -282,6 +282,7 @@ public class RetailDeliverySqlClient {
             order.setRetailerAddress(profile.address());
             order.setRetailerLatitude(nullIfZero(profile.latitude()));
             order.setRetailerLongitude(nullIfZero(profile.longitude()));
+            order.setGstNo(profile.gstNo());
         }));
     }
 
@@ -300,14 +301,16 @@ public class RetailDeliverySqlClient {
                                         rs.getString("customer_name"),
                                         rs.getString("address"),
                                         rs.getDouble("retailer_latitude"),
-                                        rs.getDouble("retailer_longitude")));
+                                        rs.getDouble("retailer_longitude"),
+                                        blankToNull(rs.getString("gstn"))));
                     },
                     chunk.toArray());
         }
         return profiles;
     }
 
-    private record HzCustomerProfile(String name, String address, double latitude, double longitude) {}
+    private record HzCustomerProfile(
+            String name, String address, double latitude, double longitude, String gstNo) {}
 
     private Object[] scheduleReadBindArgsBatch(List<String> normalizedScheduleIds) {
         List<Object> args = new ArrayList<>(normalizedScheduleIds.size() * 2 + 3);
@@ -636,6 +639,7 @@ public class RetailDeliverySqlClient {
                 .deliveryStartedAt(presentation.deliveryStartedAt())
                 .status(presentation.deliveryStatus())
                 .retailerAddress(row.address())
+                .gstNo(row.customerGstNo())
                 .retailerLatitude(nullIfZero(row.latitude()))
                 .retailerLongitude(nullIfZero(row.longitude()))
                 .deliveryVehicle(deliveryVehicleDto(row))
@@ -666,6 +670,7 @@ public class RetailDeliverySqlClient {
                 .retailerName(row.customerName())
                 .retailerMobile(row.mobileNo())
                 .retailerAddress(row.address())
+                .gstNo(row.customerGstNo())
                 .salesOrderNo(row.orderNo())
                 .itemName(row.itemName())
                 .orderedQuantity(row.weight())
@@ -722,6 +727,7 @@ public class RetailDeliverySqlClient {
                 rs.getString("customer_name"),
                 rs.getString("mobile_no"),
                 rs.getString("address"),
+                blankToNull(rs.getString("customer_gstn")),
                 rs.getDouble("retailer_latitude"),
                 rs.getDouble("retailer_longitude"),
                 rs.getString("delv_status"),
@@ -818,6 +824,10 @@ public class RetailDeliverySqlClient {
         return DeliveryOrderMessageSupport.parseDeliveredBirdCount(row.message());
     }
 
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     private static Double readNullableDouble(ResultSet rs, String column) throws SQLException {
         double value = rs.getDouble(column);
         return rs.wasNull() ? null : value;
@@ -843,6 +853,7 @@ public class RetailDeliverySqlClient {
             String customerName,
             String mobileNo,
             String address,
+            String customerGstNo,
             double latitude,
             double longitude,
             String delvStatus,

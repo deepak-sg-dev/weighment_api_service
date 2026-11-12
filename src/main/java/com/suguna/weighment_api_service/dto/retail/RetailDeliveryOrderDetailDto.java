@@ -20,6 +20,7 @@ public class RetailDeliveryOrderDetailDto {
     private String retailerName;
     private String retailerMobile;
     private String retailerAddress;
+    private String gstNo;
     private String salesOrderNo;
     private String itemName;
     private double orderedQuantity;

@@ -10,6 +10,7 @@ import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleBranchDto
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleCustomerDto;
 import com.suguna.weighment_api_service.integration.oracle.ScheduleDcAddressSqlClient;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDcDocumentDto;
+import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDcRegisteredOfficeDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDeliveryDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleFarmSummaryDto;
@@ -241,6 +242,43 @@ public final class ScheduleMapper {
         branch.setCity(address.city());
         branch.setPostalCode(address.postalCode());
         branch.setState(address.state());
+        branch.setGstNo(address.gstNo());
+    }
+
+    public static void applyRegisteredOffice(
+            ScheduleDcDocumentDto dc, ScheduleDcRegisteredOfficeDto office) {
+        if (dc == null || office == null) {
+            return;
+        }
+        dc.setRegisteredOffice(office);
+        if (dc.getCinNo() == null && office.getCinNo() != null) {
+            dc.setCinNo(office.getCinNo());
+        }
+        if (dc.getPanNo() == null && office.getPan() != null) {
+            dc.setPanNo(office.getPan());
+        }
+        applyDcRegionCompany(dc, dc.getRegion(), office.getName());
+    }
+
+    public static void applyDcRegionCompany(ScheduleDcDocumentDto dc, String region, String company) {
+        if (dc == null) {
+            return;
+        }
+        if (region != null && !region.isBlank()) {
+            dc.setRegion(region.trim());
+        }
+        if (company != null && !company.isBlank()) {
+            dc.setCompany(company.trim());
+        }
+        String regionPart = dc.getRegion();
+        String companyPart = dc.getCompany();
+        if (regionPart != null && companyPart != null) {
+            dc.setRegionCompany(regionPart + "-" + companyPart);
+        } else if (companyPart != null) {
+            dc.setRegionCompany(companyPart);
+        } else if (regionPart != null) {
+            dc.setRegionCompany(regionPart);
+        }
     }
 
     public static void applyCustomerAddress(
@@ -252,6 +290,7 @@ public final class ScheduleMapper {
         customer.setCity(address.city());
         customer.setPostalCode(address.postalCode());
         customer.setState(address.state());
+        customer.setGstNo(address.gstNo());
     }
 
     static ScheduleFarmSummaryDto toFarmSummary(LiftingSchedule schedule) {

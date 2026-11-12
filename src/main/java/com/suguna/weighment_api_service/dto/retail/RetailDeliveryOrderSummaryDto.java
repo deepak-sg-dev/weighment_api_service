@@ -31,6 +31,8 @@ public class RetailDeliveryOrderSummaryDto {
     private String deliveryStartedAt;
     /** Shop address (schedule enrichment / optional on retail list). */
     private String retailerAddress;
+    /** Shop GSTIN from {@code sug_gst_pkg.get_reg_no('GSTN','CS', cust_acct_site_id, SYSDATE)}. */
+    private String gstNo;
     private Double retailerLatitude;
     private Double retailerLongitude;
     /** Vehicle for this shop delivery leg (may differ from schedule lifting vehicle). */

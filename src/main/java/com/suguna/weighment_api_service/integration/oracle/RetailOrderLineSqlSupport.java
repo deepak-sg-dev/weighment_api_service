@@ -464,13 +464,14 @@ public class RetailOrderLineSqlSupport {
         String lon = hzSiteFlexCoordNumber("hcas", OracleErpColumns.HZ_SITE_LONGITUDE);
         String address = hzAcctSiteAddressSql("hl");
         return """
-            SELECT customer_code, customer_name, address, retailer_latitude, retailer_longitude
+            SELECT customer_code, customer_name, address, retailer_latitude, retailer_longitude, gstn
               FROM (
                 SELECT TRIM(TO_CHAR(hca.account_number)) AS customer_code,
                        hp.party_name AS customer_name,
                        NVL(NULLIF(%s, ''), NULLIF(%s, '')) AS address,
                        NVL(%s, 0) AS retailer_latitude,
                        NVL(%s, 0) AS retailer_longitude,
+                       sug_gst_pkg.get_reg_no('GSTN', 'CS', hcas.cust_acct_site_id, SYSDATE) AS gstn,
                        ROW_NUMBER() OVER (
                            PARTITION BY TRIM(TO_CHAR(hca.account_number))
                            ORDER BY hca.cust_account_id, csu.site_use_id
@@ -507,10 +508,14 @@ public class RetailOrderLineSqlSupport {
     }
 
     /**
-     * One HZ ship-to for the lifting indent customer. Binds: accountNumber, preferredLocation,
-     * preferredLocation. Prefers {@code hz_locations.address1} matching {@code CUS_LOCATION}.
+     * One HZ ship-to for the lifting indent customer. Binds: preferredLocation, preferredLocation,
+     * accountNumber. Prefers {@code hz_locations.address1} matching {@code CUS_LOCATION}.
      */
     public String buildHzIndentCustomerLookupSql() {
+        return buildHzIndentCustomerLookupSql(true);
+    }
+
+    public String buildHzIndentCustomerLookupSql(boolean includeGst) {
         if (!erpProperties.isRetailCustomerFromHzSiteEnabled()) {
             throw new IllegalStateException("HZ customer lookup is disabled");
         }
@@ -519,9 +524,13 @@ public class RetailOrderLineSqlSupport {
         String lat = hzSiteFlexCoordNumber("hcas", OracleErpColumns.HZ_SITE_LATITUDE);
         String lon = hzSiteFlexCoordNumber("hcas", OracleErpColumns.HZ_SITE_LONGITUDE);
         String address = hzAcctSiteAddressSql("hl");
+        String gstn =
+                includeGst
+                        ? "sug_gst_pkg.get_reg_no('GSTN', 'CS', hcas.cust_acct_site_id, SYSDATE)"
+                        : "CAST(NULL AS VARCHAR2(64))";
         return """
             SELECT customer_code, customer_name, address, city, postal_code, state_name,
-                   retailer_latitude, retailer_longitude
+                   retailer_latitude, retailer_longitude, gstn
               FROM (
                 SELECT TRIM(TO_CHAR(hca.account_number)) AS customer_code,
                        hp.party_name AS customer_name,
@@ -531,6 +540,7 @@ public class RetailOrderLineSqlSupport {
                        hl.state AS state_name,
                        NVL(%s, 0) AS retailer_latitude,
                        NVL(%s, 0) AS retailer_longitude,
+                       %s AS gstn,
                        ROW_NUMBER() OVER (
                            PARTITION BY TRIM(TO_CHAR(hca.account_number))
                            ORDER BY CASE
@@ -562,6 +572,7 @@ public class RetailOrderLineSqlSupport {
                         hzAddressPartAsVarchar("hcas", "ADDRESS_TEXT"),
                         lat,
                         lon,
+                        gstn,
                         apps,
                         apps,
                         apps,
@@ -575,7 +586,8 @@ public class RetailOrderLineSqlSupport {
     public String selectDetailGpsStubColumns() {
         return """
                    0 AS retailer_latitude,
-                   0 AS retailer_longitude
+                   0 AS retailer_longitude,
+                   CAST(NULL AS VARCHAR2(64)) AS customer_gstn
             """;
     }
 
@@ -594,7 +606,8 @@ public class RetailOrderLineSqlSupport {
         if (!erpProperties.isRetailCustomerFromHzSiteEnabled()) {
             return """
                    0 AS retailer_latitude,
-                   0 AS retailer_longitude
+                   0 AS retailer_longitude,
+                   CAST(NULL AS VARCHAR2(64)) AS customer_gstn
             """;
         }
         String lineLat = hzSiteFlexCoordNumber("hcas_ord", lat);
@@ -604,7 +617,8 @@ public class RetailOrderLineSqlSupport {
                     + lineLat
                     + ", 0) AS retailer_latitude,\n                   NVL("
                     + lineLon
-                    + ", 0) AS retailer_longitude\n";
+                    + ", 0) AS retailer_longitude,\n"
+                    + selectOrderedCustomerGstnColumn();
         }
         String indentLat = hzSiteFlexCoordNumber("hcas", lat);
         String indentLon = hzSiteFlexCoordNumber("hcas", lon);
@@ -616,7 +630,17 @@ public class RetailOrderLineSqlSupport {
                 + lineLon
                 + ", 0), NVL("
                 + indentLon
-                + ", 0)) AS retailer_longitude\n";
+                + ", 0)) AS retailer_longitude,\n"
+                + selectOrderedCustomerGstnColumn();
+    }
+
+    /**
+     * Shop GSTIN for the ordered HZ ship-to ({@code sug_gst_pkg.get_reg_no('GSTN','CS', cust_acct_site_id, SYSDATE)}).
+     */
+    private String selectOrderedCustomerGstnColumn() {
+        return "                   CASE WHEN hcas_ord.cust_acct_site_id IS NULL THEN CAST(NULL AS VARCHAR2(64))"
+                + " ELSE sug_gst_pkg.get_reg_no('GSTN', 'CS', hcas_ord.cust_acct_site_id, SYSDATE) END"
+                + " AS customer_gstn\n";
     }
 
     /** HZ flex attributes are often VARCHAR2; do not {@code NVL(..., 0)} directly on the column. */

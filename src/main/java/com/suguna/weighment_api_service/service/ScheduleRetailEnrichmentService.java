@@ -176,6 +176,7 @@ public class ScheduleRetailEnrichmentService {
         dto.setOrderNo(order.getRetailOrderId());
         dto.setCustomerCode(order.getRetailerId());
         dto.setCustomerName(order.getRetailerName());
+        dto.setGstNo(order.getGstNo());
         dto.setOrderedQuantityKg(order.getOrderedQuantity());
         dto.setOrderedBirdCount(order.getOrderedBirdCount());
         dto.setDeliveredQuantityKg(order.getDeliveredQuantityKg());
@@ -198,6 +199,7 @@ public class ScheduleRetailEnrichmentService {
         dto.setDropPointName(dropPointName);
         dto.setCustomerCode(order.getRetailerId());
         dto.setCustomerName(order.getRetailerName());
+        dto.setGstNo(order.getGstNo());
         dto.setLocation(row.location().getAddress());
         dto.setLatitude(nullIfZero(row.location().getLatitude()));
         dto.setLongitude(nullIfZero(row.location().getLongitude()));
