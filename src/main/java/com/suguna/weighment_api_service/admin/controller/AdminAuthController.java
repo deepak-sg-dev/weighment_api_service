@@ -1,14 +1,16 @@
 package com.suguna.weighment_api_service.admin.controller;
 
+import com.suguna.weighment_api_service.admin.dtos.requests.ChangePasswordRequestDTO;
+import com.suguna.weighment_api_service.admin.dtos.requests.ForgotPasswordRequestDTO;
 import com.suguna.weighment_api_service.admin.dtos.requests.LoginRequestDTO;
+import com.suguna.weighment_api_service.admin.dtos.requests.RefreshTokenRequestDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.CurrentUserResponseDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.LoginResponseDTO;
 import com.suguna.weighment_api_service.admin.response.ApiResponse;
-import com.suguna.weighment_api_service.admin.dtos.requests.ForgotPasswordRequestDTO;
 import com.suguna.weighment_api_service.admin.response.Response;
 import com.suguna.weighment_api_service.admin.services.AuthService;
-import org.springframework.beans.factory.annotation.Autowired;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,6 +35,29 @@ public class AdminAuthController {
         );
     }
 
+    @PostMapping("/refresh-token")
+    public ResponseEntity<ApiResponse<LoginResponseDTO>> refreshToken(
+            @RequestBody RefreshTokenRequestDTO request) {
+
+        return Response.success(
+                "Token refreshed successfully",
+                authService.refreshToken(request)
+        );
+    }
+
+    @PostMapping("/change-password/{userId}")
+    public ResponseEntity<ApiResponse<String>> changePassword(
+            @PathVariable Long userId,
+            @RequestBody ChangePasswordRequestDTO request) {
+
+        authService.changePassword(userId, request);
+
+        return Response.success(
+                "Password changed successfully",
+                "SUCCESS"
+        );
+    }
+
     @GetMapping("/current-user/{userId}")
     public ResponseEntity<ApiResponse<CurrentUserResponseDTO>> getCurrentUser(
             @PathVariable Long userId) {
@@ -54,6 +79,7 @@ public class AdminAuthController {
                 "SUCCESS"
         );
     }
+
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse<String>> forgotPassword(
             @RequestBody ForgotPasswordRequestDTO request) {
