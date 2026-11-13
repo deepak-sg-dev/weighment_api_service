@@ -34,4 +34,17 @@ public interface OrganizationBranchRepository
             String divisionName,
             Long branchId,
             Pageable pageable);
+
+    // --- REGION QUERIES ---
+
+    List<OrganizationBranch> findByDivisionNameIgnoreCaseAndRegionIdIsNotNull(
+            String divisionName);
+
+    List<OrganizationBranch> findByDivisionNameIgnoreCaseAndRegionContainingIgnoreCase(
+            String divisionName,
+            String region);
+
+    List<OrganizationBranch> findByDivisionNameIgnoreCaseAndRegionId(
+            String divisionName,
+            Long regionId);
 }

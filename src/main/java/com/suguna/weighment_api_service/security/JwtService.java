@@ -28,6 +28,10 @@ public class JwtService {
     private static final String CLAIM_USER_TYPE = "userType";
     private static final String CLAIM_USERNAME = "username";
     private static final String CLAIM_ROLE = "role";
+    private static final String CLAIM_TOKEN_TYPE = "tokenType";
+
+    // 7 days in milliseconds for refresh token
+    private static final long ADMIN_REFRESH_EXPIRATION_MS = 1000L * 60 * 60 * 24 * 7;
 
     private final JwtProperties jwtProperties;
     private final SecretKey secretKey;
@@ -84,6 +88,49 @@ public class JwtService {
                 .claim(CLAIM_ROLE, role)
                 .signWith(secretKey)
                 .compact();
+    }
+
+    /**
+     * ADMIN REFRESH TOKEN
+     */
+    public String generateAdminRefreshToken(
+            Long userId,
+            String username) {
+
+        Instant now = Instant.now();
+        Instant expiry = now.plusMillis(ADMIN_REFRESH_EXPIRATION_MS);
+
+        return Jwts.builder()
+                .subject(String.valueOf(userId))
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(expiry))
+                .claim(CLAIM_USER_TYPE, "ADMIN")
+                .claim(CLAIM_TOKEN_TYPE, "REFRESH")
+                .claim(CLAIM_USERNAME, username)
+                .signWith(secretKey)
+                .compact();
+    }
+
+    /**
+     * EXTRACT USER ID FROM ADMIN TOKEN
+     */
+    public Long extractUserId(String token) {
+        Claims claims = extractClaims(token);
+        String tokenType = claimAsString(claims, CLAIM_TOKEN_TYPE);
+        String userType = claimAsString(claims, CLAIM_USER_TYPE);
+
+        if (!"ADMIN".equals(userType) || !"REFRESH".equals(tokenType)) {
+            throw new RuntimeException("Invalid refresh token type");
+        }
+
+        return Long.valueOf(claims.getSubject());
+    }
+
+    /**
+     * EXTRACT ISSUED AT TIMESTAMP
+     */
+    public Date extractIssuedAt(String token) {
+        return extractClaims(token).getIssuedAt();
     }
 
     /**

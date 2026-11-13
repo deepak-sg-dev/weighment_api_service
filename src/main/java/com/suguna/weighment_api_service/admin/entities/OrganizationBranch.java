@@ -48,4 +48,11 @@ public class OrganizationBranch {
 
     @Column(name = "DIVISION_NAME")
     private String divisionName;
+
+    @Column(name = "REGION_ID")
+    private Long regionId;
+
+    @Column(name = "REGION_CODE")
+    private String regionCode;
+
 }
