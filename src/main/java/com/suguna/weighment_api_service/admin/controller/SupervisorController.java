@@ -27,7 +27,8 @@ public class SupervisorController {
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "20") Integer limit,
             @RequestParam(required = false) String search,
-            @RequestParam Long branchId) {
+            @RequestParam(required = false) Long branchId,
+            @RequestParam(required = false) String status) {
 
         return Response.success(
                 "Supervisors fetched successfully",
@@ -35,7 +36,8 @@ public class SupervisorController {
                         page,
                         limit,
                         search,
-                        branchId)
+                        branchId,
+                        status)
         );
     }
 
