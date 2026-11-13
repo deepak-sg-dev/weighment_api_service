@@ -43,7 +43,13 @@ public class ScheduleController {
             String traderId,
 
             @RequestParam(required = false)
+            String depot,
+
+            @RequestParam(required = false)
             String vehicleId,
+
+            @RequestParam(required = false)
+            String pickupDate,
 
             @RequestParam(required = false)
             String status) {
@@ -57,7 +63,9 @@ public class ScheduleController {
                         branchId,
                         supervisorId,
                         traderId,
+                        depot,
                         vehicleId,
+                        pickupDate,
                         status));
     }
 }

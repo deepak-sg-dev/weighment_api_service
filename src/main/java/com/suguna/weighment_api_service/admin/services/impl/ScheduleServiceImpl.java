@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -31,13 +32,16 @@ public class ScheduleServiceImpl
             Long branchId,
             String supervisorId,
             String traderId,
+            String depot,
             String vehicleId,
+            String pickupDate,
             String status) {
 
         Pageable pageable =
                 PageRequest.of(
                         page - 1,
-                        limit);
+                        limit,
+                        Sort.by(Sort.Direction.DESC, "orderRequestDate"));
 
         Page<SugMaiBirdsLiftingOrder> schedules =
                 repository.findAll(
@@ -45,7 +49,9 @@ public class ScheduleServiceImpl
                                 branchId,
                                 supervisorId,
                                 traderId,
+                                depot,
                                 vehicleId,
+                                pickupDate,
                                 status,
                                 search),
                         pageable);
@@ -87,19 +93,42 @@ public class ScheduleServiceImpl
                 order.getErpindentid());
 
         dto.setScheduleNo(
-                order.getMobileOrderNo() == null
-                        ? null
-                        : order.getMobileOrderNo().longValue());
+                order.getErpindentid() != null
+                        ? order.getErpindentid()
+                        : (order.getMobileOrderNo() != null
+                        ? order.getMobileOrderNo().toString()
+                        : null));
 
         dto.setBranchId(
                 order.getBranchid() == null
                         ? null
                         : order.getBranchid().longValue());
 
+        dto.setBranch(
+                order.getBranchcode());
+
+        dto.setSupervisorId(
+                order.getMobileuserempid());
+
+        dto.setSupervisor(
+                order.getMobileuserempid());
+
         dto.setTraderId(
                 order.getCustomercode());
 
+        dto.setTrader(
+                order.getCustomercode());
+
+        dto.setTraderName(
+                order.getCusName());
+
+        dto.setDepot(
+                order.getCusLocation());
+
         dto.setVehicleNumber(
+                order.getVehicleno());
+
+        dto.setVehicle(
                 order.getVehicleno());
 
         dto.setFarmerId(
@@ -112,6 +141,9 @@ public class ScheduleServiceImpl
                 order.getNoOfKgs() == null
                         ? null
                         : order.getNoOfKgs().doubleValue());
+
+        dto.setSource(
+                order.getSource());
 
         dto.setPickupDate(
                 order.getOrderRequestDate() == null

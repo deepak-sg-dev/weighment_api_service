@@ -11,6 +11,8 @@ public interface ScheduleService {
             Long branchId,
             String supervisorId,
             String traderId,
+            String depot,
             String vehicleId,
+            String pickupDate,
             String status);
 }
