@@ -9,19 +9,35 @@ public class ScheduleItemDTO {
 
     private String id;
 
-    private Long scheduleNo;
+    private String scheduleNo;
 
     private Long branchId;
 
+    private String branch;
+
+    private String supervisorId;
+
+    private String supervisor;
+
     private String traderId;
 
+    private String trader;
+
+    private String traderName;
+
+    private String depot;
+
     private String vehicleNumber;
+
+    private String vehicle;
 
     private String farmerId;
 
     private String farmerName;
 
     private Double quantity;
+
+    private String source;
 
     private String pickupDate;
 
