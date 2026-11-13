@@ -4,6 +4,8 @@ import com.suguna.weighment_api_service.admin.entities.OrganizationBranch;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -47,4 +49,9 @@ public interface OrganizationBranchRepository
     List<OrganizationBranch> findByDivisionNameIgnoreCaseAndRegionId(
             String divisionName,
             Long regionId);
+
+    // --- COMPANY CONFIGURATION QUERY ---
+
+    @Query(value = "SELECT sug_fnd_pkg.get_reg_off_address(:orgId) FROM dual", nativeQuery = true)
+    String getRegisteredOfficeAddress(@Param("orgId") Long orgId);
 }

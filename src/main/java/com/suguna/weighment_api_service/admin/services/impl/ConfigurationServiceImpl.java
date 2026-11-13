@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class ConfigurationServiceImpl
@@ -35,33 +37,73 @@ public class ConfigurationServiceImpl
         CompanyConfigurationResponseDTO dto =
                 new CompanyConfigurationResponseDTO();
 
-        if (org != null) {
-            dto.setZoneName(
-                    org.getZoneName());
-        }
+        dto.setCompanyShortName(
+                org != null && org.getRegionCode() != null
+                        ? org.getRegionCode()
+                        : "");
 
-        dto.setCompanyShortName("");
+        dto.setCompanyName("");
         dto.setAddress("");
-
         dto.setPanNo("");
-        dto.setZoneMobile("");
-        dto.setZoneEmail("");
-
+        dto.setPassword("");
+        dto.setCompanyMobile("");
+        dto.setCompanyEmail("");
+        dto.setCompanyImeiId1("");
+        dto.setCompanyImeiId2("");
+        dto.setCompanyImeiId3("");
         dto.setWebsite("");
         dto.setCustomerCareNo("");
-
         dto.setCinNumber("");
         dto.setGstin("");
-
+        dto.setHsnCode("01059400");
+        dto.setTaxRate(0);
         dto.setBankName("");
         dto.setBankBranch("");
+        dto.setBankAccountNo("");
         dto.setBankIfsc("");
+        dto.setEffectiveDate("");
+        dto.setAutoSiteCode("N");
 
-        dto.setOtpEnabled(false);
-        dto.setGpsMandatory(false);
-        dto.setDcSigningEnabled(false);
+        // Mapped from Oracle function sug_fnd_pkg.get_reg_off_address(2025)
+        String regInfo =
+                repository.getRegisteredOfficeAddress(2025L);
+
+        if (regInfo != null && !regInfo.isBlank()) {
+
+            dto.setCompanyName(
+                    extractField(regInfo, "Registered office\\s*:\\s*([^,\\r\\n]+)"));
+
+            int phIndex = regInfo.indexOf("Ph No:");
+            if (phIndex > 0) {
+                String rawAddress = regInfo.substring(0, phIndex)
+                        .replaceFirst("(?i)^Registered office\\s*:\\s*", "")
+                        .replaceAll("\\r?\\n", " ")
+                        .trim();
+                dto.setAddress(rawAddress);
+            }
+
+            dto.setCompanyMobile(
+                    extractField(regInfo, "Ph No\\s*:\\s*([^,\\r\\n]+)"));
+            dto.setCinNumber(
+                    extractField(regInfo, "CIN No\\s*:\\s*([^,\\r\\n]+)"));
+            dto.setPanNo(
+                    extractField(regInfo, "PAN\\s*:\\s*([^,\\r\\n]+)"));
+            dto.setCompanyEmail(
+                    extractField(regInfo, "Email\\s*:\\s*([^,\\r\\n]+)"));
+            dto.setWebsite(
+                    extractField(regInfo, "Website\\s*:\\s*([^,\\r\\n]+)"));
+            dto.setCustomerCareNo(
+                    extractField(regInfo, "Customer Care No\\s*:\\s*([^,\\r\\n]+)"));
+        }
 
         return dto;
+    }
+
+    private String extractField(String source, String regex) {
+        Matcher matcher = Pattern
+                .compile(regex, Pattern.CASE_INSENSITIVE)
+                .matcher(source);
+        return matcher.find() ? matcher.group(1).trim() : "";
     }
 
     @Override

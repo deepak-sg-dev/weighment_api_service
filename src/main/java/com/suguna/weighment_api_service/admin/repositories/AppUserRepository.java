@@ -51,4 +51,7 @@ public interface AppUserRepository
             String application,
             String userType,
             String status);
+
+    List<AppUser> findByApplicationOrderByIdDesc(
+            String application);
 }
