@@ -9,7 +9,8 @@ public interface SupervisorService {
             Integer page,
             Integer limit,
             String search,
-            Long branchId);
+            Long branchId,
+            String status);
 
     SupervisorResponseDTO getSupervisor(
             String supervisorId);

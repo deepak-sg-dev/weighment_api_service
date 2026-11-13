@@ -6,10 +6,12 @@ import com.suguna.weighment_api_service.admin.dtos.responses.SupervisorResponseD
 import com.suguna.weighment_api_service.admin.entities.Supervisor;
 import com.suguna.weighment_api_service.admin.repositories.SupervisorRepository;
 import com.suguna.weighment_api_service.admin.services.SupervisorService;
+import com.suguna.weighment_api_service.admin.specifications.SupervisorSpecification;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -29,33 +31,25 @@ public class SupervisorServiceImpl
             Integer page,
             Integer limit,
             String search,
-            Long branchId) {
+            Long branchId,
+            String status) {
 
         Pageable pageable =
-                PageRequest.of(page - 1, limit);
+                PageRequest.of(
+                        page - 1,
+                        limit,
+                        Sort.by(Sort.Direction.ASC, "empName"));
 
-        Page<Supervisor> supervisors;
+        String statusFilter = normalizeStatus(status);
 
-        if (search != null
-                && !search.trim().isEmpty()) {
-
-            supervisors =
-                    supervisorRepository
-                            .findByOrganizationIdAndApplicationAndEmpNameContainingIgnoreCase(
-                                    branchId,
-                                    APPLICATION,
-                                    search,
-                                    pageable);
-
-        } else {
-
-            supervisors =
-                    supervisorRepository
-                            .findByOrganizationIdAndApplication(
-                                    branchId,
-                                    APPLICATION,
-                                    pageable);
-        }
+        Page<Supervisor> supervisors =
+                supervisorRepository.findAll(
+                        SupervisorSpecification.filter(
+                                APPLICATION,
+                                branchId,
+                                statusFilter,
+                                search),
+                        pageable);
 
         List<SupervisorResponseDTO> items =
                 supervisors.getContent()
@@ -98,6 +92,20 @@ public class SupervisorServiceImpl
                 supervisor);
     }
 
+    private String normalizeStatus(String status) {
+        if (status == null || status.trim().isEmpty()
+                || "ALL".equalsIgnoreCase(status.trim())) {
+            return null;
+        }
+        if ("ACTIVE".equalsIgnoreCase(status.trim())) {
+            return "A";
+        }
+        if ("INACTIVE".equalsIgnoreCase(status.trim())) {
+            return "I";
+        }
+        return status.trim();
+    }
+
     private SupervisorResponseDTO mapSupervisor(
             Supervisor supervisor) {
 
@@ -117,11 +125,14 @@ public class SupervisorServiceImpl
                 supervisor.getContactNumber());
 
         dto.setDeviceImei(
-                String.valueOf(
-                        supervisor.getDeviceId()));
+                supervisor.getDeviceId() != null
+                        ? String.valueOf(supervisor.getDeviceId())
+                        : null);
 
         dto.setStatus(
-                supervisor.getStatus());
+                "A".equalsIgnoreCase(supervisor.getStatus())
+                        ? "ACTIVE"
+                        : "INACTIVE");
 
         return dto;
     }
