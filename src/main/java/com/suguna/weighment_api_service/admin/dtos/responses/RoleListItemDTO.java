@@ -8,12 +8,9 @@ import lombok.Setter;
 public class RoleListItemDTO {
 
     private Long id;
-
     private String roleName;
-
     private String roleDescription;
-
     private String roleFor;
-
+    private String application;   // Add this
     private String status;
 }

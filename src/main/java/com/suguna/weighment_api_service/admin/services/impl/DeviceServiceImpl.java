@@ -13,6 +13,7 @@ import com.suguna.weighment_api_service.admin.dtos.responses.UpdateDeviceStatusR
 import com.suguna.weighment_api_service.admin.entities.Device;
 import com.suguna.weighment_api_service.admin.repositories.DeviceRepository;
 import com.suguna.weighment_api_service.admin.services.DeviceService;
+import com.suguna.weighment_api_service.admin.specifications.DeviceSpecification;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -48,47 +49,13 @@ public class DeviceServiceImpl implements DeviceService {
         Pageable pageable =
                 PageRequest.of(page - 1, limit);
 
-        Page<Device> devices;
-
-        if (branchId != null
-                && search != null
-                && !search.trim().isEmpty()) {
-
-            devices =
-                    repository
-                            .findByApplicationAndOrganizationIdAndAndroidIdContainingIgnoreCase(
-                                    "BRO-WEIGHMENT",
-                                    BigDecimal.valueOf(branchId),
-                                    search,
-                                    pageable);
-
-        } else if (branchId != null) {
-
-            devices =
-                    repository
-                            .findByApplicationAndOrganizationId(
-                                    "BRO-WEIGHMENT",
-                                    BigDecimal.valueOf(branchId),
-                                    pageable);
-
-        } else if (search != null
-                && !search.trim().isEmpty()) {
-
-            devices =
-                    repository
-                            .findByApplicationAndAndroidIdContainingIgnoreCase(
-                                    "BRO-WEIGHMENT",
-                                    search,
-                                    pageable);
-
-        } else {
-
-            devices =
-                    repository
-                            .findByApplication(
-                                    "BRO-WEIGHMENT",
-                                    pageable);
-        }
+        Page<Device> devices =
+                repository.findAll(
+                        DeviceSpecification.filter(
+                                "BRO-WEIGHMENT",
+                                branchId,
+                                search),
+                        pageable);
 
         List<DeviceItemDTO> items =
                 devices.getContent()
@@ -117,8 +84,7 @@ public class DeviceServiceImpl implements DeviceService {
                                             : null);
 
                             dto.setStatus(
-                                    "A".equalsIgnoreCase(
-                                            device.getStatus())
+                                    "A".equalsIgnoreCase(device.getStatus())
                                             ? "ACTIVE"
                                             : "INACTIVE");
 
@@ -176,8 +142,7 @@ public class DeviceServiceImpl implements DeviceService {
                         : null);
 
         dto.setStatus(
-                "A".equalsIgnoreCase(
-                        device.getStatus())
+                "A".equalsIgnoreCase(device.getStatus())
                         ? "ACTIVE"
                         : "INACTIVE");
 

@@ -46,12 +46,16 @@ public class ScheduleSpecification {
                         "BRO-WEIGHMENT");
     }
 
+    /**
+     * Only RETAIL schedules
+     */
     private static Specification<SugMaiBirdsLiftingOrder>
     sourceFilter() {
 
         return (root, query, cb) ->
-                cb.upper(root.get("source"))
-                        .in(List.of("MOBILE", "RETAIL"));
+                cb.equal(
+                        cb.upper(root.get("source")),
+                        "RETAIL");
     }
 
     private static Specification<SugMaiBirdsLiftingOrder>
@@ -82,19 +86,14 @@ public class ScheduleSpecification {
                         supervisorId.trim());
     }
 
+    /**
+     * Retail schedules do not use Trader.
+     * Ignore trader filtering.
+     */
     private static Specification<SugMaiBirdsLiftingOrder>
     traderFilter(String traderId) {
 
-        if (traderId == null ||
-                traderId.trim().isEmpty()) {
-
-            return (root, query, cb) -> cb.conjunction();
-        }
-
-        return (root, query, cb) ->
-                cb.equal(
-                        root.get("customercode"),
-                        traderId.trim());
+        return (root, query, cb) -> cb.conjunction();
     }
 
     private static Specification<SugMaiBirdsLiftingOrder>
@@ -137,30 +136,44 @@ public class ScheduleSpecification {
         }
 
         LocalDate date = parseDate(pickupDate.trim());
+
         if (date == null) {
             return (root, query, cb) -> cb.conjunction();
         }
 
-        LocalDateTime startOfDay = date.atStartOfDay();
-        LocalDateTime endOfDay = date.plusDays(1).atStartOfDay();
+        LocalDateTime startOfDay =
+                date.atStartOfDay();
+
+        LocalDateTime endOfDay =
+                date.plusDays(1)
+                        .atStartOfDay();
 
         return (root, query, cb) ->
                 cb.and(
-                        cb.greaterThanOrEqualTo(root.get("orderRequestDate"), startOfDay),
-                        cb.lessThan(root.get("orderRequestDate"), endOfDay)
+                        cb.greaterThanOrEqualTo(
+                                root.get("orderRequestDate"),
+                                startOfDay),
+
+                        cb.lessThan(
+                                root.get("orderRequestDate"),
+                                endOfDay)
                 );
     }
 
-    private static LocalDate parseDate(String value) {
+    private static LocalDate parseDate(
+            String value) {
+
         for (DateTimeFormatter fmt : List.of(
                 DateTimeFormatter.ISO_LOCAL_DATE,
                 DateTimeFormatter.ofPattern("dd/MM/yyyy"),
                 DateTimeFormatter.ofPattern("dd-MM-yyyy"))) {
+
             try {
                 return LocalDate.parse(value, fmt);
             } catch (Exception ignored) {
             }
         }
+
         return null;
     }
 
@@ -193,16 +206,17 @@ public class ScheduleSpecification {
 
         return (root, query, cb) ->
                 cb.or(
+
                         cb.like(
                                 cb.upper(root.get("erpindentid")),
                                 keyword),
 
                         cb.like(
-                                cb.upper(root.get("customercode")),
+                                cb.upper(root.get("mobileuserempid")),
                                 keyword),
 
                         cb.like(
-                                cb.upper(root.get("cusName")),
+                                cb.upper(root.get("cusLocation")),
                                 keyword),
 
                         cb.like(

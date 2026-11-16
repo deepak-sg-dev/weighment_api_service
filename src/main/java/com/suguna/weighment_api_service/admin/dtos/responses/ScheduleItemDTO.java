@@ -42,4 +42,26 @@ public class ScheduleItemDTO {
     private String pickupDate;
 
     private String status;
+
+    // Additional Fields
+
+    private String birdType;
+
+    private String saleType;
+
+    private String scaleType;
+
+    private String deliveryStatus;
+
+    private Double plannedQuantity;
+
+    private String scheduledAt;
+
+    private String startedAt;
+
+    private Integer orderCount;
+
+    private String customerLocation;
+
+    private String farmLocation;
 }

@@ -29,17 +29,23 @@ public class SupervisorSpecification {
     }
 
     private static Specification<Supervisor> branchFilter(Long branchId) {
+
         if (branchId == null) {
             return (root, query, cb) -> cb.conjunction();
         }
+
         return (root, query, cb) ->
-                cb.equal(root.get("organizationId"), branchId);
+                cb.equal(
+                        root.get("organizationId"),
+                        branchId);
     }
 
     private static Specification<Supervisor> statusFilter(String status) {
+
         if (status == null || status.trim().isEmpty()) {
             return (root, query, cb) -> cb.conjunction();
         }
+
         return (root, query, cb) ->
                 cb.equal(
                         cb.upper(root.get("status")),
@@ -47,6 +53,7 @@ public class SupervisorSpecification {
     }
 
     private static Specification<Supervisor> searchFilter(String search) {
+
         if (search == null || search.trim().isEmpty()) {
             return (root, query, cb) -> cb.conjunction();
         }
@@ -55,10 +62,29 @@ public class SupervisorSpecification {
 
         return (root, query, cb) ->
                 cb.or(
-                        cb.like(cb.lower(root.get("empName")), keyword),
-                        cb.like(cb.lower(root.get("empCode")), keyword),
-                        cb.like(cb.lower(root.get("contactNumber")), keyword),
-                        cb.like(cb.lower(root.get("deviceId").as(String.class)), keyword)
+
+                        cb.like(
+                                cb.lower(root.get("empName")),
+                                keyword
+                        ),
+
+                        cb.like(
+                                cb.lower(root.get("empCode")),
+                                keyword
+                        ),
+
+                        cb.like(
+                                cb.lower(root.get("contactNumber")),
+                                keyword
+                        ),
+
+                        cb.like(
+                                cb.lower(
+                                        root.get("deviceId")
+                                                .as(String.class)
+                                ),
+                                keyword
+                        )
                 );
     }
 }

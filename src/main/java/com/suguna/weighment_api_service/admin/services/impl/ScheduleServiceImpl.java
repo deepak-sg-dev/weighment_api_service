@@ -41,7 +41,9 @@ public class ScheduleServiceImpl
                 PageRequest.of(
                         page - 1,
                         limit,
-                        Sort.by(Sort.Direction.DESC, "orderRequestDate"));
+                        Sort.by(
+                                Sort.Direction.DESC,
+                                "orderRequestDate"));
 
         Page<SugMaiBirdsLiftingOrder> schedules =
                 repository.findAll(
@@ -66,9 +68,7 @@ public class ScheduleServiceImpl
                 new PaginationDTO();
 
         pagination.setPage(page);
-
         pagination.setLimit(limit);
-
         pagination.setTotal(
                 schedules.getTotalElements());
 
@@ -76,9 +76,7 @@ public class ScheduleServiceImpl
                 new ScheduleListResponseDTO();
 
         response.setItems(items);
-
-        response.setPagination(
-                pagination);
+        response.setPagination(pagination);
 
         return response;
     }
@@ -105,7 +103,10 @@ public class ScheduleServiceImpl
                         : order.getBranchid().longValue());
 
         dto.setBranch(
-                order.getBranchcode());
+                order.getBranchid() == null
+                        ? null
+                        : String.valueOf(
+                        order.getBranchid().longValue()));
 
         dto.setSupervisorId(
                 order.getMobileuserempid());
@@ -113,14 +114,24 @@ public class ScheduleServiceImpl
         dto.setSupervisor(
                 order.getMobileuserempid());
 
-        dto.setTraderId(
-                order.getCustomercode());
+        if ("RETAIL".equalsIgnoreCase(
+                order.getSource())) {
 
-        dto.setTrader(
-                order.getCustomercode());
+            dto.setTraderId(null);
+            dto.setTrader(null);
+            dto.setTraderName(null);
 
-        dto.setTraderName(
-                order.getCusName());
+        } else {
+
+            dto.setTraderId(
+                    order.getCustomercode());
+
+            dto.setTrader(
+                    order.getCustomercode());
+
+            dto.setTraderName(
+                    order.getCusName());
+        }
 
         dto.setDepot(
                 order.getCusLocation());
@@ -152,6 +163,41 @@ public class ScheduleServiceImpl
 
         dto.setStatus(
                 order.getLiftingStatus());
+
+        dto.setBirdType(
+                order.getBreed());
+
+        dto.setSaleType(
+                order.getOrdertype());
+
+        dto.setScaleType(
+                order.getWeighmentType());
+
+        dto.setDeliveryStatus(
+                order.getDeliveryStatus());
+
+        dto.setPlannedQuantity(
+                order.getNoOfKgs() == null
+                        ? null
+                        : order.getNoOfKgs().doubleValue());
+
+        dto.setScheduledAt(
+                order.getOrderRequestDate() == null
+                        ? null
+                        : order.getOrderRequestDate().toString());
+
+        dto.setStartedAt(
+                order.getStartedDate() == null
+                        ? null
+                        : order.getStartedDate().toString());
+
+        dto.setOrderCount(0);
+
+        dto.setCustomerLocation(
+                order.getCusLocation());
+
+        dto.setFarmLocation(
+                order.getFarmername());
 
         return dto;
     }
