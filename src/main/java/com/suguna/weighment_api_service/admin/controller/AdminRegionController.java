@@ -11,7 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/regions")
+@RequestMapping("/api/admin/regions")
 @Tag(
         name = "Admin Regions",
         description = "Region management APIs"
@@ -34,13 +34,13 @@ public class AdminRegionController {
         );
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{regionId}")
     public ResponseEntity<ApiResponse<RegionDetailResponseDTO>> getRegionById(
-            @PathVariable Long id) {
+            @PathVariable Long regionId) {
 
         return Response.success(
                 "Region details fetched successfully",
-                regionService.getRegionById(id)
+                regionService.getRegionById(regionId)
         );
     }
 }

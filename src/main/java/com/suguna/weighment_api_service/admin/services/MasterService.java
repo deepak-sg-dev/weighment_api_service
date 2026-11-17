@@ -1,11 +1,6 @@
 package com.suguna.weighment_api_service.admin.services;
 
-import com.suguna.weighment_api_service.admin.dtos.responses.BranchDropdownDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.FarmerDropdownDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.SupervisorDropdownDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.TraderDepotDropdownDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.TraderDropdownDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.VehicleDropdownDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.*;
 
 import java.util.List;
 
@@ -27,4 +22,5 @@ public interface MasterService {
 
     List<SupervisorDropdownDTO> getSupervisors(
             Long branchId);
+    List<RegionDropdownDTO> getRegions();
 }

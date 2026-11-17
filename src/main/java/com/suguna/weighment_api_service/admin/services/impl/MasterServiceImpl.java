@@ -11,6 +11,7 @@ import com.suguna.weighment_api_service.admin.entities.OrganizationBranch;
 import com.suguna.weighment_api_service.admin.entities.Supervisor;
 import com.suguna.weighment_api_service.admin.entities.Trader;
 import com.suguna.weighment_api_service.admin.entities.TraderDepot;
+import com.suguna.weighment_api_service.admin.dtos.responses.RegionDropdownDTO;
 import com.suguna.weighment_api_service.admin.entities.Vehicle;
 import com.suguna.weighment_api_service.admin.repositories.FarmerRepository;
 import com.suguna.weighment_api_service.admin.repositories.OrganizationBranchRepository;
@@ -54,6 +55,26 @@ public class MasterServiceImpl implements MasterService {
         return organizationBranchRepository
                 .findByDivisionNameIgnoreCase("Broiler")
                 .stream()
+                .sorted((b1, b2) -> {
+
+                    boolean b1Active =
+                            b1.getDisableDate() == null;
+
+                    boolean b2Active =
+                            b2.getDisableDate() == null;
+
+                    if (b1Active && !b2Active) {
+                        return -1;
+                    }
+
+                    if (!b1Active && b2Active) {
+                        return 1;
+                    }
+
+                    return b1.getBranchName()
+                            .compareToIgnoreCase(
+                                    b2.getBranchName());
+                })
                 .map(this::mapBranch)
                 .toList();
     }
@@ -177,6 +198,11 @@ public class MasterServiceImpl implements MasterService {
         dto.setName(
                 branch.getBranchName());
 
+        dto.setStatus(
+                branch.getDisableDate() == null
+                        ? "ACTIVE"
+                        : "INACTIVE");
+
         return dto;
     }
 
@@ -253,5 +279,47 @@ public class MasterServiceImpl implements MasterService {
                 supervisor.getEmpName());
 
         return dto;
+    }
+    @Override
+    public List<RegionDropdownDTO> getRegions() {
+
+        Map<Long, RegionDropdownDTO> uniqueRegions =
+                new LinkedHashMap<>();
+
+        organizationBranchRepository
+                .findByDivisionNameIgnoreCase("Broiler")
+                .forEach(branch -> {
+
+                    if (branch.getRegionId() == null) {
+                        return;
+                    }
+
+                    uniqueRegions.computeIfAbsent(
+                            branch.getRegionId(),
+                            id -> {
+
+                                RegionDropdownDTO dto =
+                                        new RegionDropdownDTO();
+
+                                dto.setId(branch.getRegionId());
+
+                                dto.setCode(
+                                        branch.getRegionCode());
+
+                                dto.setName(
+                                        branch.getRegion());
+
+                                dto.setStatus(
+                                        branch.getDisableDate() == null
+                                                ? "ACTIVE"
+                                                : "INACTIVE");
+
+                                return dto;
+                            });
+                });
+
+        return uniqueRegions.values()
+                .stream()
+                .toList();
     }
 }

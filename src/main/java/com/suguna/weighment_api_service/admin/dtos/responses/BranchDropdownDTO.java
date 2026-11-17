@@ -12,4 +12,7 @@ public class BranchDropdownDTO {
     private String code;
 
     private String name;
+
+    private String status;
+
 }

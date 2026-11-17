@@ -52,7 +52,7 @@ public class DeviceServiceImpl implements DeviceService {
         Page<Device> devices =
                 repository.findAll(
                         DeviceSpecification.filter(
-                                "BRO-WEIGHMENT",
+                                "WMT_APP",
                                 branchId,
                                 search),
                         pageable);
@@ -209,7 +209,7 @@ public class DeviceServiceImpl implements DeviceService {
                 request.getSupervisorCode());
 
         device.setApplication(
-                "BRO-WEIGHMENT");
+                "WMT_APP");
 
         device.setCreatedBy(
                 BigDecimal.valueOf(2680));

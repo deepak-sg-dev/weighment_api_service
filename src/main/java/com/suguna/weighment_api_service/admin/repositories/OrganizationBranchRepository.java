@@ -23,6 +23,11 @@ public interface OrganizationBranchRepository
             String divisionName,
             Pageable pageable);
 
+    // Active Branches Only - Pagination
+    Page<OrganizationBranch> findByDivisionNameIgnoreCaseAndDisableDateIsNull(
+            String divisionName,
+            Pageable pageable);
+
     // Search + Pagination
     Page<OrganizationBranch>
     findByDivisionNameIgnoreCaseAndBranchNameContainingIgnoreCase(
@@ -30,9 +35,23 @@ public interface OrganizationBranchRepository
             String branchName,
             Pageable pageable);
 
+    // Search + Active Branches Only
+    Page<OrganizationBranch>
+    findByDivisionNameIgnoreCaseAndBranchNameContainingIgnoreCaseAndDisableDateIsNull(
+            String divisionName,
+            String branchName,
+            Pageable pageable);
+
     // Branch Filter + Pagination
     Page<OrganizationBranch>
     findByDivisionNameIgnoreCaseAndBranchId(
+            String divisionName,
+            Long branchId,
+            Pageable pageable);
+
+    // Branch Filter + Active Branches Only
+    Page<OrganizationBranch>
+    findByDivisionNameIgnoreCaseAndBranchIdAndDisableDateIsNull(
             String divisionName,
             Long branchId,
             Pageable pageable);
@@ -54,4 +73,8 @@ public interface OrganizationBranchRepository
 
     @Query(value = "SELECT sug_fnd_pkg.get_reg_off_address(:orgId) FROM dual", nativeQuery = true)
     String getRegisteredOfficeAddress(@Param("orgId") Long orgId);
+
+    List<OrganizationBranch>
+    findByDivisionNameIgnoreCaseOrderByDisableDateDescBranchNameAsc(
+            String divisionName);
 }

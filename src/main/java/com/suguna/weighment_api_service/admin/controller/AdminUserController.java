@@ -1,5 +1,6 @@
 package com.suguna.weighment_api_service.admin.controller;
 
+import com.suguna.weighment_api_service.admin.dtos.requests.CreateUserRequestDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.UserListItemDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.UserListResponseDTO;
 import com.suguna.weighment_api_service.admin.response.ApiResponse;
@@ -43,6 +44,18 @@ public class AdminUserController {
         return Response.success(
                 "User details fetched successfully",
                 userService.getUserById(id)
+        );
+    }
+
+    @PostMapping
+    public ResponseEntity<ApiResponse<String>> createUser(
+            @RequestBody CreateUserRequestDTO request) {
+
+        userService.createUser(request);
+
+        return Response.success(
+                "User created successfully",
+                "SUCCESS"
         );
     }
 }
