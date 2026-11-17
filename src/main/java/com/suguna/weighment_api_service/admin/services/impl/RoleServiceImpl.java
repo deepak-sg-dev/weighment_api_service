@@ -123,6 +123,7 @@ public class RoleServiceImpl implements RoleService {
                             dto.setRoleName(role.getRoleName());
                             dto.setRoleDescription(role.getRoleDesc());
                             dto.setRoleFor(role.getRoleFor());
+                            dto.setApplication(role.getApplication());
                             dto.setStatus(role.getStatus());
 
                             return dto;
