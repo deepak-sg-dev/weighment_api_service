@@ -1,9 +1,6 @@
 package com.suguna.weighment_api_service.admin.services.impl;
 
-import com.suguna.weighment_api_service.admin.dtos.responses.PaginationDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.RegionDetailResponseDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.RegionItemDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.RegionListResponseDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.*;
 import com.suguna.weighment_api_service.admin.entities.OrganizationBranch;
 import com.suguna.weighment_api_service.admin.repositories.OrganizationBranchRepository;
 import com.suguna.weighment_api_service.admin.services.RegionService;
@@ -84,6 +81,7 @@ public class RegionServiceImpl implements RegionService {
         return response;
     }
 
+
     @Override
     public RegionDetailResponseDTO getRegionById(Long regionId) {
 
@@ -104,11 +102,37 @@ public class RegionServiceImpl implements RegionService {
                 .findFirst()
                 .orElse(null);
 
-        RegionDetailResponseDTO response = new RegionDetailResponseDTO();
+        RegionDetailResponseDTO response =
+                new RegionDetailResponseDTO();
+
         response.setId(first.getRegionId());
         response.setRegionCode(first.getRegionCode());
         response.setRegion(first.getRegion());
         response.setZoneName(zoneName);
+
+        List<BranchItemDTO> branchItems =
+                branches.stream()
+                        .map(branch -> {
+                            BranchItemDTO dto =
+                                    new BranchItemDTO();
+
+                            dto.setId(branch.getBranchId());
+                            dto.setBranchCode(branch.getBranchCode());
+                            dto.setName(branch.getBranchName());
+                            dto.setBranchShortName(branch.getBranchShortName());
+                            dto.setZoneName(branch.getZoneName());
+                            dto.setRegion(branch.getRegion());
+                            dto.setStatus(
+                                    branch.getDisableDate() == null
+                                            ? "ACTIVE"
+                                            : "INACTIVE"
+                            );
+
+                            return dto;
+                        })
+                        .toList();
+
+        response.setBranches(branchItems);
 
         return response;
     }

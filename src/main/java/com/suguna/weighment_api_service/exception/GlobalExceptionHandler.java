@@ -198,6 +198,20 @@ public class GlobalExceptionHandler {
             log.debug("Client disconnect detail", ex);
         }
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+
+    }
+
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<CommonApiResponse<Void>> handleRuntimeException(
+            RuntimeException ex,
+            WebRequest request) {
+
+        return buildErrorResponse(
+                HttpStatus.UNAUTHORIZED,
+                "INVALID_CREDENTIALS",
+                ex.getMessage(),
+                Map.of(),
+                request);
     }
 
     @ExceptionHandler(Exception.class)

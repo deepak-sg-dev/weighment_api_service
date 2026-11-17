@@ -6,6 +6,9 @@ import com.suguna.weighment_api_service.admin.dtos.responses.UserListResponseDTO
 import com.suguna.weighment_api_service.admin.dtos.responses.UserSummaryDTO;
 import com.suguna.weighment_api_service.admin.entities.AppUser;
 import com.suguna.weighment_api_service.admin.entities.Role;
+import com.suguna.weighment_api_service.admin.dtos.requests.CreateUserRequestDTO;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import java.util.Date;
 import com.suguna.weighment_api_service.admin.repositories.AppUserRepository;
 import com.suguna.weighment_api_service.admin.repositories.RoleRepository;
 import com.suguna.weighment_api_service.admin.services.UserService;
@@ -26,6 +29,7 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private RoleRepository roleRepository;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Override
     public UserListResponseDTO getUsers(
@@ -169,5 +173,61 @@ public class UserServiceImpl implements UserService {
         dto.setLastLoginAt(user.getLastLoginAt());
         dto.setCreatedAt(user.getCreatedAt());
         return dto;
+    }
+    @Override
+    public void createUser(CreateUserRequestDTO request) {
+
+        if (request.getUsername() == null || request.getUsername().trim().isEmpty()) {
+            throw new RuntimeException("Username is required");
+        }
+
+        if (request.getName() == null || request.getName().trim().isEmpty()) {
+            throw new RuntimeException("Name is required");
+        }
+
+        if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
+            throw new RuntimeException("Password is required");
+        }
+
+        if (userRepository.findByUserNameAndApplication(
+                request.getUsername().trim(),
+                APP_NAME
+        ).isPresent()) {
+            throw new RuntimeException("Username already exists");
+        }
+
+        AppUser user = new AppUser();
+
+        user.setUserName(request.getUsername().trim());
+        user.setName(request.getName().trim());
+
+        if (request.getMobile() != null && !request.getMobile().isBlank()) {
+            user.setMobile(Long.valueOf(request.getMobile()));
+        }
+
+        user.setEmail(request.getEmail());
+
+        user.setApplication(APP_NAME);
+
+        user.setRoleId(request.getRoleId());
+        user.setBranchId(
+                request.getBranchId() != null
+                        ? String.valueOf(request.getBranchId())
+                        : null
+        );
+
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+
+        user.setStatus(
+                Boolean.TRUE.equals(request.getActive()) ? "A" : "I"
+        );
+
+        Date now = new Date();
+
+        user.setCreatedAt(now);
+        user.setUpdatedAt(now);
+        user.setPasswordChangedAt(now);
+
+        userRepository.save(user);
     }
 }

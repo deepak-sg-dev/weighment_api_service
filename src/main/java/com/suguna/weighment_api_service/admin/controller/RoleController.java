@@ -37,11 +37,11 @@ public class RoleController {
         return service.getRoles();
     }
 
-    @GetMapping("/menus")
+  /*  @GetMapping("/menus")
     public MenuListResponseDTO getMenus() {
 
         return service.getMenus();
-    }
+    }*/
 
     @GetMapping("/{roleId}")
     public RoleDetailResponseDTO getRole(

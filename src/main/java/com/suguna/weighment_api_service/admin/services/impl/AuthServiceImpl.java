@@ -49,14 +49,14 @@ public class AuthServiceImpl implements AuthService {
     public LoginResponseDTO login(LoginRequestDTO request) {
         AppUser user = userRepository
                 .findByUserNameAndApplication(request.getUsername(), "WMT_APP")
-                .orElseThrow(() -> new RuntimeException("Invalid Username"));
+                .orElseThrow(() -> new RuntimeException("Invalid Credentials"));
 
         if (!"A".equalsIgnoreCase(user.getStatus())) {
-            throw new RuntimeException("User is inactive");
+            throw new RuntimeException("Invalid Credentials");
         }
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new RuntimeException("Invalid Password");
+            throw new RuntimeException("Invalid Credentials");
         }
 
         // Update LAST_LOGIN_AT in SUG_MAI_USER

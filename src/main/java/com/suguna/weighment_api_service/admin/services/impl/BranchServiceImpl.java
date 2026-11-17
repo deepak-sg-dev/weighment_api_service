@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -29,34 +30,50 @@ public class BranchServiceImpl implements BranchService {
             String search,
             Long branchId) {
 
-        Pageable pageable =
-                PageRequest.of(page - 1, limit);
+        Pageable pageable = PageRequest.of(
+                page - 1,
+                limit,
+                Sort.by("branchName").ascending()
+        );
 
         Page<OrganizationBranch> branches;
 
         if (branchId != null) {
 
-            branches =
-                    repository
-                            .findByDivisionNameIgnoreCaseAndBranchId(
-                                    "Broiler",
-                                    branchId,
-                                    pageable);
+            branches = repository
+                    .findByDivisionNameIgnoreCaseAndBranchIdAndDisableDateIsNull(
+                            "Broiler",
+                            branchId,
+                            pageable);
 
         } else if (search != null
                 && !search.trim().isEmpty()) {
 
-            branches =
-                    repository
-                            .findByDivisionNameIgnoreCaseAndBranchNameContainingIgnoreCase(
-                                    "Broiler",
-                                    search,
-                                    pageable);
+            String value = search.trim();
+
+            try {
+
+                Long id = Long.parseLong(value);
+
+                branches = repository
+                        .findByDivisionNameIgnoreCaseAndBranchIdAndDisableDateIsNull(
+                                "Broiler",
+                                id,
+                                pageable);
+
+            } catch (NumberFormatException ex) {
+
+                branches = repository
+                        .findByDivisionNameIgnoreCaseAndBranchNameContainingIgnoreCaseAndDisableDateIsNull(
+                                "Broiler",
+                                value,
+                                pageable);
+            }
 
         } else {
 
-            branches =
-                    repository.findByDivisionNameIgnoreCase(
+            branches = repository
+                    .findByDivisionNameIgnoreCaseAndDisableDateIsNull(
                             "Broiler",
                             pageable);
         }
@@ -86,11 +103,7 @@ public class BranchServiceImpl implements BranchService {
                             dto.setRegion(
                                     branch.getRegion());
 
-                            dto.setStatus(
-                                    branch.getDisableDate() == null
-                                            ? "ACTIVE"
-                                            : "INACTIVE"
-                            );
+                            dto.setStatus("ACTIVE");
 
                             return dto;
                         })
@@ -108,8 +121,7 @@ public class BranchServiceImpl implements BranchService {
                 new BranchListResponseDTO();
 
         response.setItems(items);
-        response.setPagination(
-                pagination);
+        response.setPagination(pagination);
 
         return response;
     }
@@ -126,6 +138,12 @@ public class BranchServiceImpl implements BranchService {
 
         if (!"Broiler".equalsIgnoreCase(
                 branch.getDivisionName())) {
+
+            throw new RuntimeException(
+                    "Branch not found");
+        }
+
+        if (branch.getDisableDate() != null) {
 
             throw new RuntimeException(
                     "Branch not found");
@@ -161,11 +179,7 @@ public class BranchServiceImpl implements BranchService {
         response.setProcessEnabledFlag(
                 branch.getProcessEnabledFlag());
 
-        response.setStatus(
-                branch.getDisableDate() == null
-                        ? "ACTIVE"
-                        : "INACTIVE"
-        );
+        response.setStatus("ACTIVE");
 
         return response;
     }

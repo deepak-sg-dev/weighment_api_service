@@ -1,11 +1,6 @@
 package com.suguna.weighment_api_service.admin.controller;
 
-import com.suguna.weighment_api_service.admin.dtos.responses.BranchDropdownDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.FarmerDropdownDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.SupervisorDropdownDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.TraderDepotDropdownDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.TraderDropdownDTO;
-import com.suguna.weighment_api_service.admin.dtos.responses.VehicleDropdownDTO;
+import com.suguna.weighment_api_service.admin.dtos.responses.*;
 import com.suguna.weighment_api_service.admin.services.MasterService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -79,5 +74,11 @@ public class MasterController {
 
         return ResponseEntity.ok(
                 masterService.getSupervisors(branchId));
+    }
+
+    @GetMapping("/regions")
+    public List<RegionDropdownDTO> getRegions() {
+
+        return masterService.getRegions();
     }
 }

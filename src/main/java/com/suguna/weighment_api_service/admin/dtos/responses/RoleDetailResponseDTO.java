@@ -20,4 +20,6 @@ public class RoleDetailResponseDTO {
     private String status;
 
     private List<RolePermissionDTO> menus;
+
+    private List<BranchItemDTO> branches;
 }
