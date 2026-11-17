@@ -42,6 +42,53 @@ public class LiftingScheduleSqlClient {
     private static final String LIFTING_MESSAGE_SELECT =
             "SUBSTR(o.message, 1, " + LiftingDriverMessageSupport.MAX_MESSAGE_CHARS + ") AS lifting_message";
 
+    /**
+     * Weighment header keyed by lifting indent or sales order ({@code schedule_no} / {@code order_number}).
+     */
+    private static final String WEIGHMENT_MATCHES_LIFTING =
+            """
+            (
+              TRIM(TO_CHAR(w.schedule_no)) = TRIM(TO_CHAR(o.erpindentid))
+              OR TRIM(TO_CHAR(w.schedule_no)) = TRIM(TO_CHAR(o.ordernumber))
+              OR TRIM(w.order_number) = TRIM(TO_CHAR(o.erpindentid))
+              OR TRIM(w.order_number) = TRIM(TO_CHAR(o.ordernumber))
+            )
+            """;
+
+    /**
+     * Lifting vehicle/driver, then weighment header ({@code VEHICLE_NO}, ERP typo {@code DIRVER_NAME}).
+     */
+    private static final String LIFTING_VEHICLE_SELECT =
+            """
+                   NVL(NULLIF(TRIM(o.vehicleno), '-'),
+                       (SELECT TRIM(w.vehicle_no)
+                          FROM sug_mai_birds_weighment w
+                         WHERE """
+                    + WEIGHMENT_MATCHES_LIFTING
+                    + """
+                           AND NULLIF(TRIM(w.vehicle_no), '-') IS NOT NULL
+                           AND ROWNUM = 1)) AS vehicle_no,
+                   NVL(NULLIF(TRIM(o.driver), '-'),
+                       (SELECT TRIM(w.dirver_name)
+                          FROM sug_mai_birds_weighment w
+                         WHERE """
+                    + WEIGHMENT_MATCHES_LIFTING
+                    + """
+                           AND NULLIF(TRIM(w.dirver_name), '-') IS NOT NULL
+                           AND ROWNUM = 1)) AS driver_name,
+            """;
+
+    /**
+     * List / action: lifting columns only (no weighment subqueries, no CLOB {@code message}).
+     */
+    private static final String LIST_VEHICLE_SELECT =
+            """
+                   o.vehicleno AS vehicle_no,
+                   o.driver AS driver_name,
+                   CAST(NULL AS VARCHAR2(15)) AS driver_mobile_column,
+                   CAST(NULL AS VARCHAR2(1)) AS lifting_message,
+            """;
+
     /** {@code SUG_MAI_BIRDS_LIFTING_ORDER.DRIVER_MOBILE} — schedule vehicle API read/write. */
     private static final String LIFTING_DRIVER_MOBILE_SELECT =
             """
@@ -134,16 +181,19 @@ public class LiftingScheduleSqlClient {
     private final JdbcTemplate jdbcTemplate;
     private final OracleErpProperties erpProperties;
     private final OracleLiftingProperties liftingProperties;
+    private final WeighmentHeaderSqlClient weighmentHeaderSqlClient;
 
     private volatile SimpleJdbcCall cachedOrderStatusCall;
 
     public LiftingScheduleSqlClient(
             JdbcTemplate jdbcTemplate,
             OracleErpProperties erpProperties,
-            OracleLiftingProperties liftingProperties) {
+            OracleLiftingProperties liftingProperties,
+            WeighmentHeaderSqlClient weighmentHeaderSqlClient) {
         this.jdbcTemplate = jdbcTemplate;
         this.erpProperties = erpProperties;
         this.liftingProperties = liftingProperties;
+        this.weighmentHeaderSqlClient = weighmentHeaderSqlClient;
         this.listSchedulesSelect = buildListSchedulesSelect();
         this.detailSchedulesSelect = buildDetailSchedulesSelect();
     }
@@ -179,13 +229,9 @@ public class LiftingScheduleSqlClient {
                    TO_CHAR(o.branchid) AS branch_id,
                    o.ordernumber AS sales_order_no,
                    NVL(o.body_wt, 0) AS body_wt,
-                   o.vehicleno AS vehicle_no,
-                   o.driver AS driver_name,
             """
-                + LIFTING_DRIVER_MOBILE_SELECT
-                + LIFTING_MESSAGE_SELECT
+                + LIST_VEHICLE_SELECT
                 + """
-                   ,
                    NVL(f.farm_name_village, o.farmername) AS farm_location,
                    o.source AS order_source,
                    o.customercode AS customer_code,
@@ -218,9 +264,8 @@ public class LiftingScheduleSqlClient {
                    TO_CHAR(o.branchid) AS branch_id,
                    o.ordernumber AS sales_order_no,
                    NVL(o.body_wt, 0) AS body_wt,
-                   o.vehicleno AS vehicle_no,
-                   o.driver AS driver_name,
             """
+                + LIFTING_VEHICLE_SELECT
                 + LIFTING_DRIVER_MOBILE_SELECT
                 + LIFTING_MESSAGE_SELECT
                 + """
@@ -417,6 +462,7 @@ public class LiftingScheduleSqlClient {
         if (updated == 0) {
             throw new ResourceNotFoundException("Schedule", scheduleId);
         }
+        weighmentHeaderSqlClient.updateVehicle(normalizedScheduleId, safeVehicle, safeDriver);
     }
 
     private String liftingOrderAuditSetClause() {
@@ -456,9 +502,36 @@ public class LiftingScheduleSqlClient {
         if (updated == 0) {
             throw new ResourceNotFoundException("Schedule", scheduleId);
         }
+        weighmentHeaderSqlClient.updateVehicle(
+                normalizedScheduleId,
+                VehicleRegistrationSupport.normalizeOrNull(request.getVehicleRegistration()),
+                null);
         if (liftingProperties.isInvokeOrderStatusOnStart()) {
             invokeOrderStatusValidation(scheduleId);
         }
+    }
+
+    /** Copies a real plate onto the lifting order when weighment submit has one and lifting {@code VEHICLENO} is empty. */
+    public void applyLiftingVehicleNumber(String supervisorCode, String scheduleId, String vehicleNumber) {
+        String plate = VehicleRegistrationSupport.normalizeOrNull(vehicleNumber);
+        if (plate == null) {
+            return;
+        }
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        jdbcTemplate.update(
+                """
+                UPDATE sug_mai_birds_lifting_order o
+                   SET o.vehicleno = NVL(NULLIF(TRIM(o.vehicleno), '-'), ?)
+                 WHERE """
+                        + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+                        + """
+                   AND """
+                        + ORDER_SUPERVISOR_MATCH,
+                plate,
+                normalizedScheduleId,
+                normalizedScheduleId,
+                supervisorCode,
+                supervisorCode);
     }
 
     /**
@@ -676,10 +749,14 @@ public class LiftingScheduleSqlClient {
         schedule.setBranchCode(rs.getString("branch_code"));
         schedule.setBranchId(rs.getString("branch_id"));
         schedule.setSalesOrderNo(readLongObject(rs, "sales_order_no"));
-        schedule.setVehicleNumber(VehicleRegistrationSupport.normalizeOrNull(rs.getString("vehicle_no")));
-        schedule.setDriverName(rs.getString("driver_name"));
-        schedule.setDriverMobile(LiftingDriverMessageSupport.resolveDriverMobile(
-                rs.getString("driver_mobile_column"), rs.getString("lifting_message")));
+        String vehicleNo = rs.getString("vehicle_no");
+        String driverName = rs.getString("driver_name");
+        String driverMobileColumn = rs.getString("driver_mobile_column");
+        String liftingMessage = rs.getString("lifting_message");
+        schedule.setVehicleNumber(VehicleRegistrationSupport.displayOrNull(vehicleNo));
+        schedule.setDriverName(blankDashToNull(driverName));
+        schedule.setDriverMobile(
+                LiftingDriverMessageSupport.resolveDriverMobile(driverMobileColumn, liftingMessage));
         schedule.setFarmLocation(rs.getString("farm_location"));
         schedule.setFarmId(rs.getString("farm_id"));
         schedule.setFarmName(rs.getString("farm_name"));
@@ -716,6 +793,17 @@ public class LiftingScheduleSqlClient {
             schedule.setToleranceMax(0);
         }
         return schedule;
+    }
+
+    private static String blankDashToNull(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty() || "-".equals(trimmed) || "NA".equalsIgnoreCase(trimmed)) {
+            return null;
+        }
+        return trimmed;
     }
 
     private static Instant readInstant(java.sql.ResultSet rs, String column) throws java.sql.SQLException {

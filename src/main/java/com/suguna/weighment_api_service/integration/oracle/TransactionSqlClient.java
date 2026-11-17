@@ -67,6 +67,7 @@ public class TransactionSqlClient {
                    w.latitude = ?,
                    w.longitude = ?,
                    w.vehicle_no = NVL(?, w.vehicle_no),
+                   w.dirver_name = NVL(?, w.dirver_name),
                    w.scale_no = NVL(?, w.scale_no),
                    w.bird_type = NVL(?, w.bird_type),
                    w.ordered_qty = NVL(?, w.ordered_qty),
@@ -259,6 +260,7 @@ public class TransactionSqlClient {
                 farm.getCapturedLatitude(),
                 farm.getCapturedLongitude(),
                 vehicle == null ? null : vehicle.getRegistrationNumber(),
+                vehicle == null ? null : vehicle.getDriverName(),
                 scale == null ? null : scale.getDeviceId(),
                 request.effectiveBirdType(),
                 request.getPlannedQuantity(),
@@ -298,6 +300,10 @@ public class TransactionSqlClient {
 
         liftingScheduleSqlClient.markLiftingCompletedAfterWeighment(
                 supervisorCode, normalizedScheduleId, businessModule);
+        if (vehicle != null) {
+            liftingScheduleSqlClient.applyLiftingVehicleNumber(
+                    supervisorCode, normalizedScheduleId, vehicle.getRegistrationNumber());
+        }
 
         StoredTransaction stored = findByScheduleId(normalizedScheduleId, supervisorCode)
                 .orElseThrow(() -> new ResourceNotFoundException(

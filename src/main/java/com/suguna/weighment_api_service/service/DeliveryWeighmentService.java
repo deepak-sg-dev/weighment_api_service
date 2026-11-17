@@ -66,7 +66,7 @@ public class DeliveryWeighmentService {
         this.apiV2Properties = apiV2Properties;
     }
 
-    @Transactional
+    @Transactional(timeout = 20)
     public StartRetailDeliveryOrderResponse startRetailDeliveryOrder(
             AuthenticatedSupervisor supervisor,
             String orderId,
@@ -76,7 +76,10 @@ public class DeliveryWeighmentService {
         String supervisorCode = supervisor.getSupervisor().getCode();
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         ensureLiftingCompleted(supervisorCode, normalizedScheduleId);
-        RetailScheduleContext schedule = loadSchedule(supervisor, scheduleId);
+        RetailScheduleContext schedule = RetailScheduleContext.builder()
+                .scheduleId(normalizedScheduleId)
+                .supervisorCode(supervisorCode)
+                .build();
         return deliveryWeighmentRepository.startDeliveryOrder(schedule, orderId.trim(), request);
     }
 
@@ -185,7 +188,7 @@ public class DeliveryWeighmentService {
 
     private void ensureLiftingCompleted(String supervisorCode, String scheduleId) {
         LiftingSchedule schedule = scheduleRepository
-                .findByScheduleIdAndSupervisorId(scheduleId, supervisorCode)
+                .findForActionByScheduleIdAndSupervisorId(scheduleId, supervisorCode)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Schedule not found: " + scheduleId));
         if (schedule.getStatus() == ScheduleStatus.COMPLETED) {
             return;

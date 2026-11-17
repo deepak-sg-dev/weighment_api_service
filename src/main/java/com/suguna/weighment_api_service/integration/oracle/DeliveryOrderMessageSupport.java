@@ -199,15 +199,33 @@ final class DeliveryOrderMessageSupport {
     private static String normalizeBase(String existing, String orderId) {
         if (existing != null && isDeliveryWeighmentMessage(existing)) {
             String bound = boundOrderId(existing);
-            if (bound != null && !bound.equals(orderId)) {
-                throw new IllegalStateException("Order id mismatch in delivery message");
-            }
             if (bound == null) {
                 return existing + "|ORDER:" + sanitizeSegment(orderId);
             }
-            return existing;
+            if (sameOrderId(bound, orderId)) {
+                return existing;
+            }
+            // Shared DTL.message from another shop on the same header — start this shop clean.
+            return PREFIX + "ORDER:" + sanitizeSegment(orderId);
         }
         return PREFIX + "ORDER:" + sanitizeSegment(orderId);
+    }
+
+    private static boolean sameOrderId(String bound, String orderId) {
+        if (bound == null || orderId == null) {
+            return false;
+        }
+        String a = bound.trim();
+        String b = orderId.trim();
+        if (a.equals(b)) {
+            return true;
+        }
+        return stripLeadingZeros(a).equals(stripLeadingZeros(b));
+    }
+
+    private static String stripLeadingZeros(String value) {
+        String t = value.replaceFirst("^0+(?=\\d)", "");
+        return t.isEmpty() ? "0" : t;
     }
 
     private static LinkedHashSet<String> addFlag(Set<String> current, String flag) {

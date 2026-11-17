@@ -11,14 +11,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DeliveryStartUpdateSqlTest {
 
     @Test
-    void startDeliveryUpdateBindCountMatchesHzCustomerFilter() {
+    void startDeliveryUpdateBindCountIsShopOnly() {
         OracleErpProperties props = sugRetailProps();
         props.setRetailCustomerFromHzSiteEnabled(true);
         RetailOrderLineSqlSupport retailOrderSql = new RetailOrderLineSqlSupport(props);
         String sql = buildStartDeliveryUpdateSql(retailOrderSql);
         int placeholders = countBindPlaceholders(sql);
-        // startedAt + message + orderId + retailerId + 7 schedule EXISTS binds
-        assertEquals(11, placeholders, sql);
+        // startedAt + message + orderId + retailerId (no OE/PO EXISTS binds)
+        assertEquals(4, placeholders, sql);
     }
 
     @Test
@@ -31,10 +31,10 @@ class DeliveryStartUpdateSqlTest {
         assertFalse(normalized.contains("SYSDATEWHERE"), sql);
         assertTrue(normalized.contains("SYSDATE WHERE"), sql);
         assertTrue(normalized.contains("UPDATE SUG.SUG_MAI_RETAIL_ORDER_DTL ROD SET"), sql);
-        assertTrue(normalized.contains("EXISTS ( SELECT 1 FROM"), sql);
-        assertFalse(normalized.contains("SELECT 1 JOIN"), sql);
-        assertTrue(normalized.contains("TRIM(TO_CHAR(ROD.ORDER_NO)) = TRIM(?)"), sql);
-        assertTrue(normalized.contains("ROH.HEADER_ID = ROD.HEADER_ID"), sql);
+        assertFalse(normalized.contains("EXISTS"), sql);
+        assertFalse(normalized.contains("OE_ORDER"), sql);
+        assertTrue(normalized.contains("ROD.ORDER_NO = ?"), sql);
+        assertTrue(normalized.contains("ROD.CUSTOMER_CODE = ?"), sql);
         int dtlCount = 0;
         int from = 0;
         while ((from = normalized.indexOf("SUG_MAI_RETAIL_ORDER_DTL", from)) >= 0) {
@@ -45,14 +45,11 @@ class DeliveryStartUpdateSqlTest {
     }
 
     static String buildStartDeliveryUpdateSql(RetailOrderLineSqlSupport retailOrderSql) {
-        String existsSchedule = retailOrderSql.existsDetailLinkedToSchedule();
         return retailOrderSql.buildDetailUpdatePrefix()
                 + retailOrderSql.buildStartDeliverySetClause()
                 + RetailOrderLineSqlSupport.updateWhereClause()
-                + RetailOrderLineSqlSupport.whereDetailOrderNo()
-                + retailOrderSql.andDetailCustomerCodeFilter().trim()
-                + " AND "
-                + existsSchedule;
+                + RetailOrderLineSqlSupport.whereDetailOrderNoNumeric()
+                + RetailOrderLineSqlSupport.andDetailCustomerCodeBind().trim();
     }
 
     private static int countBindPlaceholders(String sql) {

@@ -58,6 +58,26 @@ class RetailOrderLineSqlSyntaxTest {
     }
 
     @Test
+    void deliveryStartLookupsSkipHzGstAndNtail() {
+        OracleErpProperties props = oeRetailProps();
+        RetailOrderLineSqlSupport sql = new RetailOrderLineSqlSupport(props);
+        String mutation = sql.fromScheduleToDetailJoinForMutation().toUpperCase();
+        assertFalse(mutation.contains("HZ_"), mutation);
+        assertFalse(mutation.contains("GET_REG_NO"), mutation);
+        assertFalse(mutation.contains("SUG_MAI_NTAIL_ORDER"), mutation);
+        String state = sql.buildLoadOrderMessageStateByShopSql().toUpperCase();
+        assertFalse(state.contains("GET_REG_NO"), state);
+        assertFalse(state.contains("HZ_CUST"), state);
+        assertFalse(state.contains("OE_ORDER"), state);
+        assertFalse(state.contains("PO_REQUISITION"), state);
+        assertTrue(state.contains("CUSTOMER_CODE"), state);
+        assertTrue(state.contains("SUG_MAI_RETAIL_ORDER_DTL"), state);
+        String agg = sql.buildAggregateDeliveryStatusSql().toUpperCase();
+        assertFalse(agg.contains("GET_REG_NO"), agg);
+        assertFalse(agg.contains("HZ_CUST"), agg);
+    }
+
+    @Test
     void batchListSelectHasSingleSelectKeyword() {
         OracleErpProperties props = sugRetailProps();
         RetailOrderLineSqlSupport sql = new RetailOrderLineSqlSupport(props);

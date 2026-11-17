@@ -40,6 +40,7 @@ public class WeighmentHeaderSqlClient {
                 ordered_qty,
                 order_number,
                 vehicle_no,
+                dirver_name,
                 status,
                 npick_status,
                 creation_date,
@@ -55,6 +56,7 @@ public class WeighmentHeaderSqlClient {
                    NVL(o.no_of_birds, 0),
                    TO_CHAR(o.ordernumber),
                    o.vehicleno,
+                   o.driver,
                    'Pending',
                    'Y',
                    SYSDATE,
@@ -67,6 +69,28 @@ public class WeighmentHeaderSqlClient {
             + """
                AND """
             + ORDER_SUPERVISOR_MATCH;
+
+    /**
+     * Match weighment by indent {@code schedule_no} or sales {@code order_number} (same schedule id binds x4).
+     */
+    private static final String WEIGHMENT_INDENT_OR_ORDER_MATCH =
+            """
+             (
+              TO_CHAR(w.schedule_no) = TRIM(?)
+              OR TO_CHAR(w.schedule_no) = REGEXP_SUBSTR(TRIM(?), '^[^/]+')
+              OR TRIM(w.order_number) = TRIM(?)
+              OR TRIM(w.order_number) = REGEXP_SUBSTR(TRIM(?), '^[^/]+')
+             )
+            """;
+
+    private static final String UPDATE_VEHICLE_SQL =
+            """
+            UPDATE sug_mai_birds_weighment w
+               SET w.vehicle_no = NVL(?, w.vehicle_no),
+                   w.dirver_name = NVL(?, w.dirver_name),
+                   w.updated_date = SYSDATE
+             WHERE """
+                    + WEIGHMENT_INDENT_OR_ORDER_MATCH;
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -93,5 +117,33 @@ public class WeighmentHeaderSqlClient {
         if (inserted == 0) {
             throw new ResourceNotFoundException("Lifting order", scheduleId);
         }
+    }
+
+    /**
+     * Updates {@code VEHICLE_NO} / {@code DIRVER_NAME} on existing weighment headers. No-op when no header yet
+     * (start/PATCH can run before first weighment insert).
+     */
+    public int updateVehicle(String scheduleId, String vehicleNo, String driverName) {
+        String normalized = ScheduleIdSupport.normalize(scheduleId);
+        String plate = blankToNull(vehicleNo);
+        String driver = blankToNull(driverName);
+        if (plate == null && driver == null) {
+            return 0;
+        }
+        return jdbcTemplate.update(
+                UPDATE_VEHICLE_SQL,
+                plate,
+                driver,
+                normalized,
+                normalized,
+                normalized,
+                normalized);
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null || value.isBlank() || "-".equals(value.trim())) {
+            return null;
+        }
+        return value.trim();
     }
 }

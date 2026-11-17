@@ -29,6 +29,25 @@ public final class VehicleRegistrationSupport {
         return normalizeOrNull(current);
     }
 
+    /**
+     * GET/display: keep ERP formatting (hyphens/spaces). Null only when blank or placeholder
+     * ({@code -}, {@code NA}). Does not apply the 6–13 write-side length rule.
+     */
+    public static String displayOrNull(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty() || "-".equals(trimmed)) {
+            return null;
+        }
+        String compact = trimmed.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+        if (compact.isEmpty() || PLACEHOLDERS.contains(compact)) {
+            return null;
+        }
+        return trimmed;
+    }
+
     /** Compact uppercase A–Z/0–9, or {@code null} when blank / placeholder / too short. */
     public static String normalizeOrNull(String raw) {
         if (raw == null) {

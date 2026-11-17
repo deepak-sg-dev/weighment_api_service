@@ -15,6 +15,14 @@ class VehicleRegistrationSupportTest {
     }
 
     @Test
+    void displayKeepsErpPlateThatWouldFailWriteValidation() {
+        assertEquals("TN-09-AB-1234", VehicleRegistrationSupport.displayOrNull("TN-09-AB-1234"));
+        assertEquals("TN38", VehicleRegistrationSupport.displayOrNull("TN38"));
+        assertNull(VehicleRegistrationSupport.displayOrNull("-"));
+        assertNull(VehicleRegistrationSupport.normalizeOrNull("TN38"));
+    }
+
+    @Test
     void stripsHyphensAndSpaces() {
         assertEquals("TN09AB1234", VehicleRegistrationSupport.normalizeOrNull("TN-09-AB-1234"));
         assertEquals("TN09AB1234", VehicleRegistrationSupport.normalizeOrNull("tn 09 ab 1234"));

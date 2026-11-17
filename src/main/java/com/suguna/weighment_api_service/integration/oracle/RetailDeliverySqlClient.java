@@ -655,9 +655,19 @@ public class RetailDeliverySqlClient {
 
     /** Re-reads retail order lines for the schedule and returns PENDING / IN_PROGRESS / COMPLETED. */
     public String aggregateScheduleDeliveryStatus(RetailScheduleContext schedule) {
-        List<RetailDeliveryOrderSummaryDto> orders = listDeliveryOrders(schedule);
-        return RetailOrderDeliveryStatus.aggregateForLiftingOrder(
-                orders.stream().map(RetailDeliveryOrderSummaryDto::getDeliveryStatus).toList());
+        List<String> statuses = jdbcTemplate.query(
+                retailOrderSql.buildAggregateDeliveryStatusSql(),
+                (rs, rowNum) -> {
+                    Timestamp started = rs.getTimestamp("delivery_started_date");
+                    Instant startedInstant = started == null ? null : started.toInstant();
+                    return RetailOrderDeliveryStatus.resolveForOrder(
+                            rs.getString("delv_status"),
+                            rs.getString("uploaded_flag"),
+                            rs.getString("message"),
+                            startedInstant);
+                },
+                scheduleReadBindArgs(schedule.getScheduleId()));
+        return RetailOrderDeliveryStatus.aggregateForLiftingOrder(statuses);
     }
 
     private RetailDeliveryOrderDetailDto mapDetail(ResultSet rs, String scheduleId) throws SQLException {

@@ -15,13 +15,20 @@ import com.suguna.weighment_api_service.constants.ErrorCode;
 import com.suguna.weighment_api_service.constants.ErrorCodes;
 import com.suguna.weighment_api_service.exception.BusinessValidationException;
 import com.suguna.weighment_api_service.util.WeighmentSubmitKeys;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +37,7 @@ public class DeliveryWeighmentSqlClient {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final DateTimeFormatter ISO_INSTANT = DateTimeFormatter.ISO_INSTANT;
+    private static final int START_ORACLE_TIMEOUT_SECONDS = 10;
 
     private final JdbcTemplate jdbcTemplate;
     private final OracleErpProperties erpProperties;
@@ -43,6 +51,7 @@ public class DeliveryWeighmentSqlClient {
     private final String startDeliveryOrderSql;
     private final String orderCompleteSql;
     private final String loadOrderStateSql;
+    private final String loadOrderStateByShopSql;
 
     public DeliveryWeighmentSqlClient(
             JdbcTemplate jdbcTemplate,
@@ -80,10 +89,8 @@ public class DeliveryWeighmentSqlClient {
                 retailOrderSql.buildDetailUpdatePrefix()
                         + retailOrderSql.buildStartDeliverySetClause()
                         + RetailOrderLineSqlSupport.updateWhereClause()
-                        + RetailOrderLineSqlSupport.whereDetailOrderNo()
-                        + retailOrderSql.andDetailCustomerCodeFilter().trim()
-                        + " AND "
-                        + existsSchedule;
+                        + RetailOrderLineSqlSupport.whereDetailOrderNoNumeric()
+                        + RetailOrderLineSqlSupport.andDetailCustomerCodeBind().trim();
         this.orderCompleteSql =
                 retailOrderSql.buildDetailUpdatePrefix()
                         + retailOrderSql.buildCompleteDetailSetClause()
@@ -92,14 +99,15 @@ public class DeliveryWeighmentSqlClient {
                         + " AND "
                         + existsSchedule;
         this.loadOrderStateSql = retailOrderSql.buildLoadOrderMessageStateSql();
+        this.loadOrderStateByShopSql =
+                retailOrderSql.buildLoadOrderMessageStateByShopSql() + "\n           FOR UPDATE WAIT 1";
     }
 
     public StartRetailDeliveryOrderResponse startDeliveryOrder(
             RetailScheduleContext schedule, String orderId, StartRetailDeliveryOrderRequest request) {
-        var order = retailDeliverySqlClient.getDeliveryOrder(schedule, orderId);
-        validateRetailer(order.getRetailerId(), request.getRetailerId());
-
-        OrderMessageState state = loadMessageState(schedule, orderId);
+        String retailerId = request.getRetailerId() == null ? "" : request.getRetailerId().trim();
+        OrderMessageState state = loadMessageStateByShop(orderId, retailerId);
+        validateRetailer(state.customerCode(), retailerId);
         if (isOrderDeliveryComplete(state)) {
             throw new ConflictException(ErrorCode.CONFLICT, "Retail delivery order is already completed");
         }
@@ -114,15 +122,21 @@ public class DeliveryWeighmentSqlClient {
         String newMessage =
                 DeliveryOrderMessageSupport.mergeDeliveryStart(state.message(), orderId, startedAt, lat, lon);
 
-        List<Object> startArgs = new ArrayList<>();
-        startArgs.add(Timestamp.from(startedAt));
-        startArgs.add(newMessage);
-        startArgs.add(orderId);
-        startArgs.add(order.getRetailerId());
-        for (Object bind : retailDeliverySqlClient.scheduleBindArgs(schedule)) {
-            startArgs.add(bind);
+        int updated;
+        try {
+            updated =
+                    updateWithTimeout(
+                            startDeliveryOrderSql,
+                            Timestamp.from(startedAt),
+                            newMessage,
+                            orderId,
+                            state.customerCode());
+        } catch (DataAccessException ex) {
+            if (isStartLockOrTimeout(ex)) {
+                throw startTimedOut(orderId);
+            }
+            throw ex;
         }
-        int updated = jdbcTemplate.update(startDeliveryOrderSql, startArgs.toArray());
         if (updated == 0) {
             throw new ResourceNotFoundException("Retail delivery order", orderId);
         }
@@ -132,7 +146,10 @@ public class DeliveryWeighmentSqlClient {
                     "Delivery start matched " + updated + " shop lines; expected only order " + orderId);
         }
 
-        syncLiftingDeliveryStatus(schedule);
+        liftingScheduleSqlClient.syncRetailDeliveryStatus(
+                schedule.getSupervisorCode(),
+                schedule.getScheduleId(),
+                RetailOrderDeliveryStatus.toApiStatus(RetailOrderDeliveryStatus.IN_PROGRESS));
         return startResponse(schedule.getScheduleId(), orderId, startedAt, false);
     }
 
@@ -343,25 +360,86 @@ public class DeliveryWeighmentSqlClient {
     }
 
     private OrderMessageState loadMessageState(RetailScheduleContext schedule, String orderId) {
+        return loadMessageStateByShop(orderId, null);
+    }
+
+    private OrderMessageState loadMessageStateByShop(String orderId, String customerCode) {
         try {
-            Object[] args = new Object[7 + 1];
-            System.arraycopy(retailDeliverySqlClient.scheduleBindArgs(schedule), 0, args, 0, 7);
-            args[7] = orderId;
-            return jdbcTemplate.queryForObject(
-                    loadOrderStateSql,
-                    (rs, rowNum) -> {
-                        Timestamp started = rs.getTimestamp("delivery_started_date");
-                        Instant startedInstant = started == null ? null : started.toInstant();
-                        return new OrderMessageState(
-                                rs.getString("message"),
-                                rs.getString("uploaded_flag"),
-                                rs.getString("delv_status"),
-                                startedInstant);
-                    },
-                    args);
+            if (customerCode != null && !customerCode.isBlank()) {
+                return queryMessageState(loadOrderStateByShopSql, orderId, customerCode.trim());
+            }
+            return queryMessageState(loadOrderStateSql, orderId);
         } catch (EmptyResultDataAccessException ex) {
             throw new ResourceNotFoundException("Retail delivery order", orderId);
+        } catch (DataAccessException ex) {
+            if (isStartLockOrTimeout(ex)) {
+                throw startTimedOut(orderId);
+            }
+            throw ex;
         }
+    }
+
+    private OrderMessageState queryMessageState(String sql, Object... args) {
+        return jdbcTemplate.execute((Connection con) -> {
+            try (PreparedStatement ps = con.prepareStatement(sql)) {
+                ps.setQueryTimeout(START_ORACLE_TIMEOUT_SECONDS);
+                bind(ps, args);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        throw new EmptyResultDataAccessException(1);
+                    }
+                    return mapMessageState(rs, 0);
+                }
+            }
+        });
+    }
+
+    private int updateWithTimeout(String sql, Object... args) {
+        Integer updated = jdbcTemplate.execute((Connection con) -> {
+            try (PreparedStatement ps = con.prepareStatement(sql)) {
+                ps.setQueryTimeout(START_ORACLE_TIMEOUT_SECONDS);
+                bind(ps, args);
+                return ps.executeUpdate();
+            }
+        });
+        return updated == null ? 0 : updated;
+    }
+
+    private static void bind(PreparedStatement ps, Object... args) throws java.sql.SQLException {
+        for (int i = 0; i < args.length; i++) {
+            ps.setObject(i + 1, args[i]);
+        }
+    }
+
+    private static boolean isStartLockOrTimeout(DataAccessException ex) {
+        if (ex instanceof QueryTimeoutException
+                || ex instanceof CannotAcquireLockException
+                || ex instanceof PessimisticLockingFailureException) {
+            return true;
+        }
+        String message = ex.getMostSpecificCause() == null ? ex.getMessage() : ex.getMostSpecificCause().getMessage();
+        if (message == null) {
+            return false;
+        }
+        return message.contains("ORA-30006")
+                || message.contains("ORA-00054")
+                || message.contains("timed out");
+    }
+
+    private static ConflictException startTimedOut(String orderId) {
+        return new ConflictException(
+                ErrorCode.CONFLICT, "Delivery start timed out for order " + orderId + "; retry");
+    }
+
+    private OrderMessageState mapMessageState(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+        Timestamp started = rs.getTimestamp("delivery_started_date");
+        Instant startedInstant = started == null ? null : started.toInstant();
+        return new OrderMessageState(
+                rs.getString("customer_code"),
+                rs.getString("message"),
+                rs.getString("uploaded_flag"),
+                rs.getString("delv_status"),
+                startedInstant);
     }
 
     private static void validateRetailer(String expectedRetailerId, String providedRetailerId) {
@@ -420,5 +498,9 @@ public class DeliveryWeighmentSqlClient {
     }
 
     private record OrderMessageState(
-            String message, String uploadedFlag, String delvStatus, Instant deliveryStartedAt) {}
+            String customerCode,
+            String message,
+            String uploadedFlag,
+            String delvStatus,
+            Instant deliveryStartedAt) {}
 }

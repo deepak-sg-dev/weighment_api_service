@@ -24,7 +24,10 @@ public final class LiftingDriverMessageSupport {
     /** Prefer dedicated column when set; otherwise {@code DRIVER_MOB:} token in {@code message}. */
     public static String resolveDriverMobile(String columnValue, String message) {
         if (columnValue != null && !columnValue.isBlank()) {
-            return columnValue.trim();
+            String trimmed = columnValue.trim();
+            if (!"-".equals(trimmed) && !"NA".equalsIgnoreCase(trimmed)) {
+                return trimmed;
+            }
         }
         return readDriverMobile(message);
     }

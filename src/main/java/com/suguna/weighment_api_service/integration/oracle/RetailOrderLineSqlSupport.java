@@ -47,6 +47,13 @@ public class RetailOrderLineSqlSupport {
         return fromScheduleToDetailJoin("rod", false, false, true);
     }
 
+    /**
+     * Mutations / status checks: lifting→HDR/DTL (and OE/PO when configured) without HZ, GPS, GST, or ntail.
+     */
+    public String fromScheduleToDetailJoinForMutation() {
+        return fromScheduleToDetailJoin("rod", false, false, false);
+    }
+
     /** Same join chain with a custom detail-line alias (for correlated {@code EXISTS} on UPDATE). */
     public String fromScheduleToDetailJoin(String detailAlias) {
         return fromScheduleToDetailJoin(detailAlias, false, false, false);
@@ -347,6 +354,13 @@ public class RetailOrderLineSqlSupport {
         return " TRIM(TO_CHAR(rod.order_no)) = TRIM(?) ";
     }
 
+    /**
+     * Index-friendly shop start. Bind the raw {@code order_no} (do not wrap the column — VARCHAR or NUMBER).
+     */
+    public static String whereDetailOrderNoNumeric() {
+        return " rod.order_no = ? ";
+    }
+
     /** Extra filter for a single shop line (bind: orderNo). Use after other {@code WHERE} predicates. */
     public static String andDetailOrderNo() {
         return " AND TRIM(TO_CHAR(rod.order_no)) = TRIM(?) ";
@@ -355,6 +369,11 @@ public class RetailOrderLineSqlSupport {
     /** Match ordered customer on detail line (bind: customerCode). */
     public String andDetailCustomerCodeFilter() {
         return " AND TRIM(TO_CHAR(rod.customer_code)) = TRIM(?) ";
+    }
+
+    /** Index-friendly customer match for shop start (bind: retailerId). */
+    public static String andDetailCustomerCodeBind() {
+        return " AND rod.customer_code = ? ";
     }
 
     /**
@@ -451,6 +470,10 @@ public class RetailOrderLineSqlSupport {
      * {@code TRIM(TO_CHAR(account_number))} values. Does not join lifting/OE.
      */
     public String buildHzCustomerLookupSql(int customerCodeCount) {
+        return buildHzCustomerLookupSql(customerCodeCount, false);
+    }
+
+    public String buildHzCustomerLookupSql(int customerCodeCount, boolean includeGst) {
         if (customerCodeCount < 1) {
             throw new IllegalArgumentException("customerCodeCount must be >= 1");
         }
@@ -463,6 +486,10 @@ public class RetailOrderLineSqlSupport {
         String lat = hzSiteFlexCoordNumber("hcas", OracleErpColumns.HZ_SITE_LATITUDE);
         String lon = hzSiteFlexCoordNumber("hcas", OracleErpColumns.HZ_SITE_LONGITUDE);
         String address = hzAcctSiteAddressSql("hl");
+        String gstn =
+                includeGst
+                        ? "sug_gst_pkg.get_reg_no('GSTN', 'CS', hcas.cust_acct_site_id, SYSDATE)"
+                        : "CAST(NULL AS VARCHAR2(64))";
         return """
             SELECT customer_code, customer_name, address, retailer_latitude, retailer_longitude, gstn
               FROM (
@@ -471,7 +498,7 @@ public class RetailOrderLineSqlSupport {
                        NVL(NULLIF(%s, ''), NULLIF(%s, '')) AS address,
                        NVL(%s, 0) AS retailer_latitude,
                        NVL(%s, 0) AS retailer_longitude,
-                       sug_gst_pkg.get_reg_no('GSTN', 'CS', hcas.cust_acct_site_id, SYSDATE) AS gstn,
+                       %s AS gstn,
                        ROW_NUMBER() OVER (
                            PARTITION BY TRIM(TO_CHAR(hca.account_number))
                            ORDER BY hca.cust_account_id, csu.site_use_id
@@ -497,6 +524,7 @@ public class RetailOrderLineSqlSupport {
                         hzAddressPartAsVarchar("hcas", "ADDRESS_TEXT"),
                         lat,
                         lon,
+                        gstn,
                         apps,
                         apps,
                         apps,
@@ -766,20 +794,56 @@ public class RetailOrderLineSqlSupport {
                 + ")\n";
     }
 
+    /**
+     * Delivery start/status: DTL only (no OE/PO/HZ). Bind order_no. Use when the shop line is already
+     * known from the mobile request.
+     */
     public String buildLoadOrderMessageStateSql() {
+        return buildLoadOrderMessageStateSelectFromDtl()
+                + RetailOrderLineSqlSupport.updateWhereClause()
+                + whereDetailOrderNoNumeric()
+                + " AND ROWNUM = 1";
+    }
+
+    /** Same as {@link #buildLoadOrderMessageStateSql()} plus customer_code. */
+    public String buildLoadOrderMessageStateByShopSql() {
+        return buildLoadOrderMessageStateSelectFromDtl()
+                + RetailOrderLineSqlSupport.updateWhereClause()
+                + whereDetailOrderNoNumeric()
+                + andDetailCustomerCodeBind()
+                + " AND ROWNUM = 1";
+    }
+
+    private String buildLoadOrderMessageStateSelectFromDtl() {
         String statusSelect =
                 "NVL(rod." + OracleErpColumns.DELV_STATUS + ", 'PENDING') AS delv_status";
         String dateSelect = "rod." + OracleErpColumns.DELV_START_DT + " AS delivery_started_date";
         return """
-            SELECT rod.message, rod.uploaded_flag,
+            SELECT TO_CHAR(rod.customer_code) AS customer_code,
+                   rod.message, rod.uploaded_flag,
                    """
                 + statusSelect
                 + ",\n                   "
                 + dateSelect
-                + "\n"
-                + fromScheduleToDetailJoin()
-                + whereLiftingScheduleForRetailSecure()
-                + andDetailOrderNo();
+                + "\n              FROM "
+                + updateDetailTableName()
+                + " rod";
+    }
+
+    /**
+     * Per-shop delivery status only (no HZ / GST / ntail). Binds: {@link #whereLiftingScheduleForRetailRead()}.
+     */
+    public String buildAggregateDeliveryStatusSql() {
+        return "SELECT NVL(rod."
+                + OracleErpColumns.DELV_STATUS
+                + ", 'PENDING') AS delv_status,\n"
+                + "                   rod.uploaded_flag,\n"
+                + "                   rod.message,\n"
+                + "                   rod."
+                + OracleErpColumns.DELV_START_DT
+                + " AS delivery_started_date\n"
+                + fromScheduleToDetailJoinForMutation()
+                + whereLiftingScheduleForRetailRead();
     }
 
     public String buildCompleteDetailSetClause() {
