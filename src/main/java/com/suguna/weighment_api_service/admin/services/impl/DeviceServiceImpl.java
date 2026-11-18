@@ -150,14 +150,15 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
+
     public CreateDeviceResponseDTO createDevice(
             CreateDeviceRequestDTO request) {
 
-        if (request.getImei() == null ||
-                request.getImei().isBlank()) {
+        if (request.getDeviceId() == null ||
+                request.getDeviceId().isBlank()) {
 
             throw new RuntimeException(
-                    "IMEI is required");
+                    "Device Id is required");
         }
 
         if (request.getBranchId() == null) {
@@ -185,25 +186,42 @@ public class DeviceServiceImpl implements DeviceService {
                     "Ledger Id is required");
         }
 
-        BigDecimal deviceId =
-                new BigDecimal(
-                        request.getImei());
-
-        if (repository.existsByDeviceId(deviceId)) {
+        if (repository.existsByAndroidId(
+                request.getDeviceId())) {
 
             throw new RuntimeException(
-                    "Device already exists");
+                    "Device Id already exists");
         }
 
-        Device device =
-                new Device();
+        Device device = new Device();
+
+        device.setAndroidId(
+                request.getDeviceId());
+
+        if (request.getImei() != null &&
+                !request.getImei().isBlank()) {
+
+            try {
+
+                device.setDeviceId(
+                        new BigDecimal(
+                                request.getImei()));
+
+            } catch (NumberFormatException ex) {
+
+                throw new RuntimeException(
+                        "Invalid IMEI");
+            }
+
+        } else {
+
+            device.setDeviceId(
+                    BigDecimal.ZERO);
+        }
 
         device.setOrganizationId(
                 BigDecimal.valueOf(
                         request.getBranchId()));
-
-        device.setDeviceId(
-                deviceId);
 
         device.setEmpCode(
                 request.getSupervisorCode());
@@ -221,6 +239,12 @@ public class DeviceServiceImpl implements DeviceService {
         device.setEmpId(
                 BigDecimal.valueOf(
                         request.getSupervisorId()));
+
+        if (request.getSupervisorName() != null) {
+
+            device.setEmpName(
+                    request.getSupervisorName());
+        }
 
         device.setStatus("A");
 

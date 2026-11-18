@@ -38,16 +38,16 @@ public class SupervisorServiceImpl
                 PageRequest.of(
                         page - 1,
                         limit,
-                        Sort.by(Sort.Direction.ASC, "empName"));
-
-        String statusFilter = normalizeStatus(status);
+                        Sort.by(
+                                Sort.Direction.ASC,
+                                "empName"));
 
         Page<Supervisor> supervisors =
                 supervisorRepository.findAll(
                         SupervisorSpecification.filter(
                                 APPLICATION,
                                 branchId,
-                                statusFilter,
+                                "A",
                                 search),
                         pageable);
 
@@ -92,20 +92,6 @@ public class SupervisorServiceImpl
                 supervisor);
     }
 
-    private String normalizeStatus(String status) {
-        if (status == null || status.trim().isEmpty()
-                || "ALL".equalsIgnoreCase(status.trim())) {
-            return null;
-        }
-        if ("ACTIVE".equalsIgnoreCase(status.trim())) {
-            return "A";
-        }
-        if ("INACTIVE".equalsIgnoreCase(status.trim())) {
-            return "I";
-        }
-        return status.trim();
-    }
-
     private SupervisorResponseDTO mapSupervisor(
             Supervisor supervisor) {
 
@@ -126,11 +112,13 @@ public class SupervisorServiceImpl
 
         dto.setDeviceImei(
                 supervisor.getDeviceId() != null
-                        ? String.valueOf(supervisor.getDeviceId())
+                        ? String.valueOf(
+                        supervisor.getDeviceId())
                         : null);
 
         dto.setStatus(
-                "A".equalsIgnoreCase(supervisor.getStatus())
+                "A".equalsIgnoreCase(
+                        supervisor.getStatus())
                         ? "ACTIVE"
                         : "INACTIVE");
 
