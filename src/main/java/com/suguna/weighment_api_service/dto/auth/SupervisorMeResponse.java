@@ -15,5 +15,10 @@ import lombok.NoArgsConstructor;
 public class SupervisorMeResponse {
 
     private boolean success;
+    private String userType;
+    private String role;
+    private String vehicleNo;
+    private java.util.List<LoginMenuDto> menus;
     private SupervisorDto supervisor;
+    private DriverDto driver;
 }

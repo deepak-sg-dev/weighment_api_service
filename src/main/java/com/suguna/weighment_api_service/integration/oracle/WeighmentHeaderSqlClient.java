@@ -1,7 +1,11 @@
 package com.suguna.weighment_api_service.integration.oracle;
 
+import com.suguna.weighment_api_service.domain.DeliveryCompletedWeighmentHeader;
 import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -25,7 +29,101 @@ public class WeighmentHeaderSqlClient {
             SELECT COUNT(*)
               FROM sug_mai_birds_weighment w
              WHERE """
-            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH;
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + ScheduleIdSupport.WEIGHMENT_EXCLUDE_DELIVERY_SOURCE;
+
+    static final String FIND_DELIVERY_HEADER_TRANS_ID_SQL =
+            """
+            SELECT w.trans_id
+              FROM sug_mai_birds_weighment w
+             WHERE """
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + """
+               AND TRIM(w.order_number) = TRIM(?)
+               AND UPPER(TRIM(w.source)) = 'DELIVERY'
+             ORDER BY w.trans_id DESC
+             FETCH FIRST 1 ROW ONLY
+            """;
+
+    static final String INSERT_COMPLETED_DELIVERY_HEADER_SQL =
+            """
+            INSERT INTO sug_mai_birds_weighment (
+                trans_id,
+                schedule_no,
+                wm_supervisor_code,
+                farm_code,
+                farm_name,
+                branch_code,
+                bird_type,
+                ordered_qty,
+                order_number,
+                customer_code,
+                customer_name,
+                vehicle_no,
+                dirver_name,
+                no_of_birds,
+                no_of_cages,
+                empty_wt,
+                gross_wt,
+                net_wt,
+                avg_wt,
+                latitude,
+                longitude,
+                wm_start_time,
+                wm_end_time,
+                manual_dc_no,
+                status,
+                source,
+                creation_date,
+                updated_date
+            )
+            SELECT sug_mai_birds_weighment_s.NEXTVAL,
+                   o.erpindentid,
+                   o.mobileuserempid,
+                   o.farmercode,
+                   NVL(f.farm_name_village, o.farmername),
+                   o.branchcode,
+                   NVL(NULLIF(TRIM(o.ordertype), ''), 'BROILER'),
+                   ?,
+                   ?,
+                   ?,
+                   ?,
+                   o.vehicleno,
+                   o.driver,
+                   ?,
+                   ?,
+                   ?,
+                   ?,
+                   ?,
+                   ?,
+                   ?,
+                   ?,
+                   ?,
+                   ?,
+                   ?,
+                   'Completed',
+                   'DELIVERY',
+                   SYSDATE,
+                   SYSDATE
+              FROM sug_mai_birds_lifting_order o
+              LEFT JOIN sug_farm_mst_header f
+                ON TRIM(f.farm_code) = TRIM(o.farmercode)
+             WHERE """
+            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+            + """
+               AND """
+            + ORDER_SUPERVISOR_MATCH
+            + """
+               AND NOT EXISTS (
+                    SELECT 1
+                      FROM sug_mai_birds_weighment w
+                     WHERE """
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + """
+                       AND TRIM(w.order_number) = TRIM(?)
+                       AND UPPER(TRIM(w.source)) = 'DELIVERY'
+               )
+            """;
 
     private static final String INSERT_HEADER_FROM_ORDER_SQL =
             """
@@ -90,7 +188,8 @@ public class WeighmentHeaderSqlClient {
                    w.dirver_name = NVL(?, w.dirver_name),
                    w.updated_date = SYSDATE
              WHERE """
-                    + WEIGHMENT_INDENT_OR_ORDER_MATCH;
+                    + WEIGHMENT_INDENT_OR_ORDER_MATCH
+                    + ScheduleIdSupport.WEIGHMENT_EXCLUDE_DELIVERY_SOURCE;
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -117,6 +216,71 @@ public class WeighmentHeaderSqlClient {
         if (inserted == 0) {
             throw new ResourceNotFoundException("Lifting order", scheduleId);
         }
+    }
+
+    /**
+     * One header per completed shop. Copies farm/vehicle from the lifting indent; does not update the farm row.
+     *
+     * @return {@code trans_id} of the delivery header
+     */
+    public long ensureCompletedDeliveryHeader(DeliveryCompletedWeighmentHeader header) {
+        String scheduleId = ScheduleIdSupport.normalize(header.getScheduleId());
+        String orderNo = header.getRetailOrderNo() == null ? "" : header.getRetailOrderNo().trim();
+        Long existing = findDeliveryHeaderTransId(scheduleId, orderNo);
+        if (existing != null) {
+            return existing;
+        }
+        String supervisorCode = header.getSupervisorCode();
+        int inserted = jdbcTemplate.update(
+                INSERT_COMPLETED_DELIVERY_HEADER_SQL,
+                header.getOrderedQty(),
+                orderNo,
+                blankToNull(header.getCustomerCode()),
+                blankToNull(header.getCustomerName()),
+                header.getNoOfBirds(),
+                header.getNoOfCages(),
+                header.getEmptyWt(),
+                header.getGrossWt(),
+                header.getNetWt(),
+                header.getAvgWt(),
+                header.getLatitude(),
+                header.getLongitude(),
+                timestamp(header.getWmStartTime()),
+                timestamp(header.getWmEndTime()),
+                blankToNull(header.getManualDcNo()),
+                scheduleId,
+                scheduleId,
+                supervisorCode,
+                supervisorCode,
+                scheduleId,
+                scheduleId,
+                orderNo);
+        Long transId = findDeliveryHeaderTransId(scheduleId, orderNo);
+        if (transId != null) {
+            return transId;
+        }
+        if (inserted == 0) {
+            throw new ResourceNotFoundException(
+                    "Lifting order for delivery weighment header, schedule " + scheduleId);
+        }
+        throw new ResourceNotFoundException(
+                "Delivery weighment header for order " + orderNo + " schedule " + scheduleId);
+    }
+
+    public Long findDeliveryHeaderTransId(String scheduleId, String retailOrderNo) {
+        String normalized = ScheduleIdSupport.normalize(scheduleId);
+        String orderNo = retailOrderNo == null ? "" : retailOrderNo.trim();
+        List<Long> ids = jdbcTemplate.query(
+                FIND_DELIVERY_HEADER_TRANS_ID_SQL,
+                (rs, rowNum) -> rs.getLong("trans_id"),
+                normalized,
+                normalized,
+                orderNo);
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private static Timestamp timestamp(Instant instant) {
+        return instant == null ? null : Timestamp.from(instant);
     }
 
     /**

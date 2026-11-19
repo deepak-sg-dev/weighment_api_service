@@ -3,6 +3,7 @@ package com.suguna.weighment_api_service.service;
 import com.suguna.weighment_api_service.constants.WeighmentWorkflowStep;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleWorkflowDto;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleWorkflowStepDto;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -67,6 +68,23 @@ public class ScheduleWorkflowService {
         return ScheduleWorkflowDto.builder()
                 .lifting(lifting)
                 .delivery(copy(DEFAULT_DELIVERY))
+                .build();
+    }
+
+    /** Driver app: vehicle photo plus delivery steps (no farm lifting). */
+    public ScheduleWorkflowDto resolveForDriver() {
+        List<ScheduleWorkflowStepDto> delivery = new ArrayList<>();
+        delivery.add(step(WeighmentWorkflowStep.VEHICLE_PHOTO, 1));
+        for (ScheduleWorkflowStepDto s : copy(DEFAULT_DELIVERY)) {
+            delivery.add(ScheduleWorkflowStepDto.builder()
+                    .step(s.getStep())
+                    .sequence(s.getSequence() + 1)
+                    .enabled(s.isEnabled())
+                    .build());
+        }
+        return ScheduleWorkflowDto.builder()
+                .lifting(List.of())
+                .delivery(delivery)
                 .build();
     }
 

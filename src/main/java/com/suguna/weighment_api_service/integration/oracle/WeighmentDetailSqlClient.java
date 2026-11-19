@@ -32,6 +32,7 @@ public class WeighmentDetailSqlClient {
               FROM sug_mai_birds_weighment w
              WHERE """
             + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + ScheduleIdSupport.WEIGHMENT_EXCLUDE_DELIVERY_SOURCE
             + """
              ORDER BY w.updated_date DESC NULLS LAST
              FETCH FIRST 1 ROW ONLY

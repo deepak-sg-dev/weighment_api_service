@@ -22,6 +22,10 @@ public final class ErrorCodes {
     public static final String DEVICE_DISABLED = "DEVICE_DISABLED";
     public static final String SUPERVISOR_INACTIVE = "SUPERVISOR_INACTIVE";
     public static final String UNAUTHORIZED_DEVICE = "UNAUTHORIZED_DEVICE";
+    public static final String VEHICLE_NOT_REGISTERED = "VEHICLE_NOT_REGISTERED";
+    public static final String VEHICLE_DEVICE_MISMATCH = "VEHICLE_DEVICE_MISMATCH";
+    public static final String VEHICLE_NOT_DRIVER = "VEHICLE_NOT_DRIVER";
+    public static final String VEHICLE_MAPPING_EXPIRED = "VEHICLE_MAPPING_EXPIRED";
 
     // --- Reference / state (404 / 409) ---
     public static final String NOT_FOUND = "NOT_FOUND";

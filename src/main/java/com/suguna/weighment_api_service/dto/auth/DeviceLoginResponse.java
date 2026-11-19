@@ -22,5 +22,10 @@ public class DeviceLoginResponse {
     private String accessToken;
     private String tokenType;
     private long expiresIn;
+    private String userType;
+    private String role;
+    private String vehicleNo;
+    private java.util.List<LoginMenuDto> menus;
     private SupervisorDto supervisor;
+    private DriverDto driver;
 }

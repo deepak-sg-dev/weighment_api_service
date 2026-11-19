@@ -53,6 +53,7 @@ public class LiftingScheduleSqlClient {
               OR TRIM(w.order_number) = TRIM(TO_CHAR(o.erpindentid))
               OR TRIM(w.order_number) = TRIM(TO_CHAR(o.ordernumber))
             )
+            AND NVL(UPPER(TRIM(w.source)), 'X') <> 'DELIVERY'
             """;
 
     /**
@@ -108,6 +109,10 @@ public class LiftingScheduleSqlClient {
      * List API: only {@code sug_mai_birds_lifting_order} rows created for the mobile weighment app
      * ({@code source} MOBILE / MOBILE_DOWNLOADED) plus configured retail source (e.g. RETAIL).
      */
+    /** Driver list/detail: lifting {@code VEHICLENO} compact-equals login plate. */
+    private static final String VEHICLE_COMPACT_MATCH =
+            "REGEXP_REPLACE(UPPER(NVL(o.vehicleno, '')), '[^A-Z0-9]', '') = ?";
+
     private static final String LIST_ORDER_SOURCE_PREDICATE =
             """
              AND (UPPER(TRIM(NVL(o.source, 'X'))) LIKE 'MOBILE%'
@@ -127,6 +132,25 @@ public class LiftingScheduleSqlClient {
             + """
                AND """
             + ORDER_SUPERVISOR_MATCH;
+
+    /**
+     * Driver offline download: flag only. Do not overwrite {@code lifting_status = COMPLETED}.
+     */
+    private static final String MARK_DOWNLOADED_BY_VEHICLE_SQL =
+            """
+            UPDATE sug_mai_birds_lifting_order o
+               SET o.download_flag = 'Y',
+                   o.downloaded_date = ?,
+                   o.updated_at = SYSDATE,
+                   o.updated_by = ?
+             WHERE """
+            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+            + """
+               AND """
+            + VEHICLE_COMPACT_MATCH
+            + """
+               AND NVL(o.application, ?) = ?
+            """;
 
     private static final String START_SCHEDULE_SQL =
             """
@@ -325,6 +349,60 @@ public class LiftingScheduleSqlClient {
         return jdbcTemplate.query(sql, (rs, rowNum) -> mapListSchedule(rs), args.toArray());
     }
 
+    /**
+     * Driver app: schedules for this plate with lifting completed (and optional lookback / ids).
+     */
+    public List<LiftingSchedule> listSchedulesByVehicle(
+            String compactVehicleNo,
+            ScheduleListFilter listFilter) {
+        ScheduleListFilter filter = listFilter == null ? ScheduleListFilter.none() : listFilter;
+        int lookbackDays = filter.effectiveLookbackDays(erpProperties);
+        String sql = listSchedulesSelect
+                + " WHERE "
+                + VEHICLE_COMPACT_MATCH
+                + """
+                 AND NVL(o.application, ?) = ?
+                """
+                + LIST_ORDER_SOURCE_PREDICATE
+                + lookbackPredicate(lookbackDays)
+                + scheduleIdsPredicate(filter)
+                + " AND NVL(o.lifting_status, 'PENDING') = 'COMPLETED'";
+
+        List<Object> args = new ArrayList<>();
+        args.add(compactVehicleNo);
+        args.add(erpProperties.getApplicationCode());
+        args.add(erpProperties.getApplicationCode());
+        args.add(erpProperties.getRetailLiftingSource());
+        if (lookbackDays > 0) {
+            args.add(lookbackDays);
+        }
+        appendScheduleIdBinds(args, filter);
+        return jdbcTemplate.query(sql, (rs, rowNum) -> mapListSchedule(rs), args.toArray());
+    }
+
+    public LiftingSchedule getScheduleDetailsForVehicle(String compactVehicleNo, String scheduleId) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        String sql = detailSchedulesSelect
+                + " WHERE "
+                + VEHICLE_COMPACT_MATCH
+                + """
+                 AND NVL(o.application, ?) = ?
+                 AND """
+                + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH;
+        List<LiftingSchedule> schedules = jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> mapDetailSchedule(rs),
+                compactVehicleNo,
+                erpProperties.getApplicationCode(),
+                erpProperties.getApplicationCode(),
+                normalizedScheduleId,
+                normalizedScheduleId);
+        if (schedules.isEmpty()) {
+            return null;
+        }
+        return schedules.get(0);
+    }
+
     public LiftingSchedule getScheduleDetails(String supervisorCode, String scheduleId) {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         String sql = detailSchedulesSelect
@@ -387,6 +465,23 @@ public class LiftingScheduleSqlClient {
                 normalizedScheduleId,
                 supervisorCode,
                 supervisorCode);
+        if (updated == 0) {
+            throw new ResourceNotFoundException("Schedule", scheduleId);
+        }
+    }
+
+    public void markScheduleDownloadedByVehicle(
+            String compactVehicleNo, String updatedBy, String scheduleId, MarkScheduleDownloadedRequest request) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        int updated = jdbcTemplate.update(
+                MARK_DOWNLOADED_BY_VEHICLE_SQL,
+                Timestamp.from(request.getDownloadedAt()),
+                trimUpdatedBy(updatedBy),
+                normalizedScheduleId,
+                normalizedScheduleId,
+                compactVehicleNo,
+                erpProperties.getApplicationCode(),
+                erpProperties.getApplicationCode());
         if (updated == 0) {
             throw new ResourceNotFoundException("Schedule", scheduleId);
         }

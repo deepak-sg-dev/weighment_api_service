@@ -2,6 +2,7 @@ package com.suguna.weighment_api_service.integration.oracle;
 
 import com.suguna.weighment_api_service.config.ApiV2Properties;
 import com.suguna.weighment_api_service.config.OracleErpProperties;
+import com.suguna.weighment_api_service.domain.DeliveryCompletedWeighmentHeader;
 import com.suguna.weighment_api_service.domain.RetailScheduleContext;
 import com.suguna.weighment_api_service.dto.retail.CompleteRetailDeliveryRequest;
 import com.suguna.weighment_api_service.dto.retail.CompleteRetailDeliveryResponse;
@@ -62,6 +63,7 @@ public class RetailDeliverySqlClient {
     private final OracleErpProperties erpProperties;
     private final ApiV2Properties apiV2Properties;
     private final RetailOrderLineSqlSupport retailOrderSql;
+    private final WeighmentHeaderSqlClient weighmentHeaderSqlClient;
     private final String listRetailOrdersSql;
     private final String loadRetailOrderByNoSql;
     private final String markArrivedSql;
@@ -75,11 +77,13 @@ public class RetailDeliverySqlClient {
             JdbcTemplate jdbcTemplate,
             OracleErpProperties erpProperties,
             ApiV2Properties apiV2Properties,
-            RetailOrderLineSqlSupport retailOrderSql) {
+            RetailOrderLineSqlSupport retailOrderSql,
+            WeighmentHeaderSqlClient weighmentHeaderSqlClient) {
         this.jdbcTemplate = jdbcTemplate;
         this.erpProperties = erpProperties;
         this.apiV2Properties = apiV2Properties;
         this.retailOrderSql = retailOrderSql;
+        this.weighmentHeaderSqlClient = weighmentHeaderSqlClient;
         this.listRetailOrdersSql = retailOrderSql.selectDetailCoreColumns()
                 + retailOrderSql.selectDelvStatusColumn()
                 + retailOrderSql.selectDelvStartedColumn()
@@ -379,6 +383,7 @@ public class RetailDeliverySqlClient {
         ensureOrderMatchesRetailer(schedule, retailOrderId, request.getRetailerId());
         RetailOrderRow row = loadOrderRow(schedule, retailOrderId);
         if (isIdempotencyReplay(row.message(), request.getIdempotencyKey())) {
+            insertCompletedDeliveryWeighmentHeader(schedule, retailOrderId, row, request);
             return completedDeliveryResponse(retailOrderId, "COMPLETED");
         }
 
@@ -388,7 +393,35 @@ public class RetailDeliverySqlClient {
         if (updated == 0) {
             throw new ResourceNotFoundException("Retail delivery order", retailOrderId);
         }
+        insertCompletedDeliveryWeighmentHeader(schedule, retailOrderId, row, request);
         return completedDeliveryResponse(retailOrderId, "COMPLETED");
+    }
+
+    private void insertCompletedDeliveryWeighmentHeader(
+            RetailScheduleContext schedule,
+            String retailOrderId,
+            RetailOrderRow row,
+            CompleteRetailDeliveryRequest request) {
+        Double lat = null;
+        Double lon = null;
+        if (request.getDeliveryLocation() != null) {
+            lat = request.getDeliveryLocation().getLatitude();
+            lon = request.getDeliveryLocation().getLongitude();
+        }
+        weighmentHeaderSqlClient.ensureCompletedDeliveryHeader(DeliveryCompletedWeighmentHeader.builder()
+                .scheduleId(schedule.getScheduleId())
+                .supervisorCode(schedule.getSupervisorCode())
+                .retailOrderNo(retailOrderId)
+                .customerCode(request.getRetailerId() != null ? request.getRetailerId() : row.customerCode())
+                .customerName(row.customerName())
+                .orderedQty(row.weight())
+                .noOfBirds(request.getDeliveredBirdCount())
+                .netWt(request.getDeliveredWeight())
+                .avgWt(request.getAverageBirdWeight())
+                .latitude(lat)
+                .longitude(lon)
+                .wmEndTime(request.getCompletedAt())
+                .build());
     }
 
     public RetailRetailerOtpResolution resolveRetailerOtp(RetailScheduleContext schedule, String retailOrderId) {

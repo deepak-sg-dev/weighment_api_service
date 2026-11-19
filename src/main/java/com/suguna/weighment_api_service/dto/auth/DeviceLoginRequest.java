@@ -24,6 +24,11 @@ public class DeviceLoginRequest {
     @Size(max = 128, message = "deviceId must be at most 128 characters")
     private String deviceId;
 
+    /** Driver login: plate must be mapped to {@link #deviceId} on {@code sug_mai_lifting_vehicle_mst}. */
+    @JsonAlias({"vehicle_no", "vehicleno", "vehicleNumber"})
+    @Size(max = 32, message = "vehicleNo must be at most 32 characters")
+    private String vehicleNo;
+
     @NotBlank(message = "appVersion is required")
     @Size(max = 32)
     private String appVersion;

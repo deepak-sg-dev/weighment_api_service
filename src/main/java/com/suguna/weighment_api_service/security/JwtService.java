@@ -23,6 +23,7 @@ public class JwtService {
     private static final String CLAIM_SUPERVISOR_MOBILE = "supervisorMobile";
     private static final String CLAIM_BRANCH_ID = "branchId";
     private static final String CLAIM_BRANCH_NAME = "branchName";
+    private static final String CLAIM_VEHICLE_NO = "vehicleNo";
 
     // COMMON CLAIMS
     private static final String CLAIM_USER_TYPE = "userType";
@@ -47,24 +48,39 @@ public class JwtService {
     public String generateAccessToken(
             String deviceId,
             SupervisorProfile supervisor) {
+        return generateAccessToken(deviceId, supervisor, "APP", null);
+    }
+
+    public String generateAccessToken(
+            String deviceId,
+            SupervisorProfile supervisor,
+            String userType,
+            String vehicleNo) {
 
         Instant now = Instant.now();
         Instant expiry =
                 now.plusMillis(jwtProperties.getExpirationTime());
+        String type = userType == null || userType.isBlank() ? "APP" : userType.trim();
 
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(supervisor.getId())
-                .claim(CLAIM_USER_TYPE, "APP") // IMPORTANT
+                .claim(CLAIM_USER_TYPE, type)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))
-                .claim(CLAIM_DEVICE_ID, deviceId)
-                .claim(CLAIM_SUPERVISOR_CODE, supervisor.getCode())
-                .claim(CLAIM_SUPERVISOR_NAME, supervisor.getName())
-                .claim(CLAIM_SUPERVISOR_MOBILE, supervisor.getMobile())
-                .claim(CLAIM_BRANCH_ID, supervisor.getBranchId())
-                .claim(CLAIM_BRANCH_NAME, supervisor.getBranchName())
-                .signWith(secretKey)
-                .compact();
+                .claim(CLAIM_DEVICE_ID, deviceId);
+        putClaim(builder, CLAIM_SUPERVISOR_CODE, supervisor.getCode());
+        putClaim(builder, CLAIM_SUPERVISOR_NAME, supervisor.getName());
+        putClaim(builder, CLAIM_SUPERVISOR_MOBILE, supervisor.getMobile());
+        putClaim(builder, CLAIM_BRANCH_ID, supervisor.getBranchId());
+        putClaim(builder, CLAIM_BRANCH_NAME, supervisor.getBranchName());
+        putClaim(builder, CLAIM_VEHICLE_NO, vehicleNo);
+        return builder.signWith(secretKey).compact();
+    }
+
+    private static void putClaim(io.jsonwebtoken.JwtBuilder builder, String name, String value) {
+        if (value != null && !value.isBlank()) {
+            builder.claim(name, value.trim());
+        }
     }
 
     /**
@@ -150,8 +166,7 @@ public class JwtService {
             String userType =
                     claimAsString(claims, CLAIM_USER_TYPE);
 
-            // Allow only APP tokens
-            if (!"APP".equals(userType)) {
+            if (!"APP".equals(userType) && !"DRIVER".equals(userType)) {
                 return Optional.empty();
             }
 
@@ -184,7 +199,9 @@ public class JwtService {
             return Optional.of(
                     new AuthenticatedSupervisor(
                             deviceId,
-                            supervisor));
+                            supervisor,
+                            userType,
+                            claimAsString(claims, CLAIM_VEHICLE_NO)));
 
         } catch (RuntimeException ex) {
             return Optional.empty();

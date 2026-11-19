@@ -19,11 +19,9 @@ import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentRequ
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentRequest.PaymentInfo;
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentResponse;
 import com.suguna.weighment_api_service.exception.ApiException;
-import com.suguna.weighment_api_service.exception.BadRequestException;
 import com.suguna.weighment_api_service.exception.BusinessValidationException;
 import com.suguna.weighment_api_service.repository.DeliveryWeighmentRepository;
 import com.suguna.weighment_api_service.repository.RetailDeliveryRepository;
-import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.storage.WeighmentImageCategory;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
@@ -45,7 +43,7 @@ public class DeliveryWeighmentService {
     private final RetailDeliveryRepository retailDeliveryRepository;
     private final WeighmentImageUploadService imageUploadService;
     private final OracleErpProperties erpProperties;
-    private final ScheduleRepository scheduleRepository;
+    private final ScheduleAccessService scheduleAccessService;
     private final ScheduleWorkflowService scheduleWorkflowService;
     private final ApiV2Properties apiV2Properties;
 
@@ -54,14 +52,14 @@ public class DeliveryWeighmentService {
             RetailDeliveryRepository retailDeliveryRepository,
             WeighmentImageUploadService imageUploadService,
             OracleErpProperties erpProperties,
-            ScheduleRepository scheduleRepository,
+            ScheduleAccessService scheduleAccessService,
             ScheduleWorkflowService scheduleWorkflowService,
             ApiV2Properties apiV2Properties) {
         this.deliveryWeighmentRepository = deliveryWeighmentRepository;
         this.retailDeliveryRepository = retailDeliveryRepository;
         this.imageUploadService = imageUploadService;
         this.erpProperties = erpProperties;
-        this.scheduleRepository = scheduleRepository;
+        this.scheduleAccessService = scheduleAccessService;
         this.scheduleWorkflowService = scheduleWorkflowService;
         this.apiV2Properties = apiV2Properties;
     }
@@ -73,9 +71,9 @@ public class DeliveryWeighmentService {
             String scheduleId,
             StartRetailDeliveryOrderRequest request) {
         validateDevice(supervisor, request.getDeviceId());
-        String supervisorCode = supervisor.getSupervisor().getCode();
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
-        ensureLiftingCompleted(supervisorCode, normalizedScheduleId);
+        ensureLiftingCompleted(supervisor, normalizedScheduleId);
+        String supervisorCode = scheduleAccessService.liftingSupervisorCode(supervisor, normalizedScheduleId);
         RetailScheduleContext schedule = RetailScheduleContext.builder()
                 .scheduleId(normalizedScheduleId)
                 .supervisorCode(supervisorCode)
@@ -94,8 +92,7 @@ public class DeliveryWeighmentService {
         validateShopValidation(normalizedScheduleId, request);
         validatePayment(request.getPayment());
 
-        String supervisorCode = supervisor.getSupervisor().getCode();
-        ensureLiftingCompleted(supervisorCode, normalizedScheduleId);
+        ensureLiftingCompleted(supervisor, normalizedScheduleId);
 
         RetailScheduleContext schedule = loadSchedule(supervisor, request.getScheduleId());
         if (scheduleWorkflowService.isDeliveryStepEnabled(normalizedScheduleId, WeighmentWorkflowStep.OTP_VALIDATION)) {
@@ -186,10 +183,8 @@ public class DeliveryWeighmentService {
                 .build();
     }
 
-    private void ensureLiftingCompleted(String supervisorCode, String scheduleId) {
-        LiftingSchedule schedule = scheduleRepository
-                .findForActionByScheduleIdAndSupervisorId(scheduleId, supervisorCode)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Schedule not found: " + scheduleId));
+    private void ensureLiftingCompleted(AuthenticatedSupervisor session, String scheduleId) {
+        LiftingSchedule schedule = scheduleAccessService.requireLiftingForAction(session, scheduleId);
         if (schedule.getStatus() == ScheduleStatus.COMPLETED) {
             return;
         }
@@ -203,11 +198,7 @@ public class DeliveryWeighmentService {
     }
 
     private RetailScheduleContext loadSchedule(AuthenticatedSupervisor supervisor, String scheduleId) {
-        if (scheduleId == null || scheduleId.isBlank()) {
-            throw new BadRequestException("scheduleId is required");
-        }
-        return retailDeliveryRepository.loadRetailSchedule(
-                supervisor.getSupervisor().getCode(), ScheduleIdSupport.normalize(scheduleId));
+        return scheduleAccessService.loadRetailSchedule(supervisor, scheduleId);
     }
 
     private void validateRetailSaleType(SubmitDeliveryWeighmentRequest request) {
@@ -318,7 +309,7 @@ public class DeliveryWeighmentService {
     }
 
     private void validateSupervisor(AuthenticatedSupervisor supervisor, String supervisorId) {
-        if (supervisorId == null || supervisorId.isBlank()) {
+        if (supervisorId == null || supervisorId.isBlank() || supervisor.isDriver()) {
             return;
         }
         String code = supervisor.getSupervisor().getCode();

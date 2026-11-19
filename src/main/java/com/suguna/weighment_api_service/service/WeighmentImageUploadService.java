@@ -12,8 +12,6 @@ import com.suguna.weighment_api_service.exception.ApiException;
 import com.suguna.weighment_api_service.exception.BadRequestException;
 import com.suguna.weighment_api_service.integration.oracle.WeighmentImageRefSqlClient.WeighmentImageRefInsert;
 import com.suguna.weighment_api_service.repository.DeliveryWeighmentRepository;
-import com.suguna.weighment_api_service.repository.RetailDeliveryRepository;
-import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.repository.WeighmentImageRefRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.storage.WeighmentImageCategory;
@@ -35,27 +33,24 @@ public class WeighmentImageUploadService {
     private static final DateTimeFormatter ISO_INSTANT = DateTimeFormatter.ISO_INSTANT;
 
     private final WeighmentImageStorageService imageStorageService;
-    private final ScheduleRepository scheduleRepository;
-    private final RetailDeliveryRepository retailDeliveryRepository;
     private final DeliveryWeighmentRepository deliveryWeighmentRepository;
     private final ScheduleRetailEnrichmentService retailEnrichmentService;
     private final WeighmentImageRefRepository weighmentImageRefRepository;
+    private final ScheduleAccessService scheduleAccessService;
     private final OracleErpProperties erpProperties;
 
     public WeighmentImageUploadService(
             WeighmentImageStorageService imageStorageService,
-            ScheduleRepository scheduleRepository,
-            RetailDeliveryRepository retailDeliveryRepository,
             DeliveryWeighmentRepository deliveryWeighmentRepository,
             ScheduleRetailEnrichmentService retailEnrichmentService,
             WeighmentImageRefRepository weighmentImageRefRepository,
+            ScheduleAccessService scheduleAccessService,
             OracleErpProperties erpProperties) {
         this.imageStorageService = imageStorageService;
-        this.scheduleRepository = scheduleRepository;
-        this.retailDeliveryRepository = retailDeliveryRepository;
         this.deliveryWeighmentRepository = deliveryWeighmentRepository;
         this.retailEnrichmentService = retailEnrichmentService;
         this.weighmentImageRefRepository = weighmentImageRefRepository;
+        this.scheduleAccessService = scheduleAccessService;
         this.erpProperties = erpProperties;
     }
 
@@ -78,7 +73,8 @@ public class WeighmentImageUploadService {
 
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         WeighmentImageDomain domain = resolveDomain(category, domainOverride);
-        RetailScheduleContext retailSchedule = ensureScheduleAccess(supervisor, normalizedScheduleId, domain);
+        RetailScheduleContext retailSchedule = ensureScheduleAccess(
+                supervisor, normalizedScheduleId, domain, category);
         String saleType = resolveSaleType(supervisor, normalizedScheduleId, domain);
         if (category == WeighmentImageCategory.TRADER_SIGN && !"WHOLESALE".equals(saleType)) {
             throw new BadRequestException(
@@ -175,14 +171,18 @@ public class WeighmentImageUploadService {
     }
 
     private RetailScheduleContext ensureScheduleAccess(
-            AuthenticatedSupervisor supervisor, String normalizedScheduleId, WeighmentImageDomain domain) {
-        if (domain == WeighmentImageDomain.DELIVERY) {
-            return retailDeliveryRepository.loadRetailSchedule(
-                    supervisor.getSupervisor().getCode(), normalizedScheduleId);
+            AuthenticatedSupervisor session,
+            String scheduleId,
+            WeighmentImageDomain imageDomain,
+            WeighmentImageCategory imageCategory) {
+        if (imageDomain == WeighmentImageDomain.DELIVERY) {
+            return scheduleAccessService.loadRetailSchedule(session, scheduleId);
         }
-        scheduleRepository
-                .findByScheduleIdAndSupervisorId(normalizedScheduleId, supervisor.getSupervisor().getCode())
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Schedule not found: " + normalizedScheduleId));
+        if (session.isDriver() && imageCategory != WeighmentImageCategory.VEHICLE) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN, "Driver login can only upload vehicle and delivery images.");
+        }
+        scheduleAccessService.requireLifting(session, scheduleId);
         return null;
     }
 
@@ -191,9 +191,7 @@ public class WeighmentImageUploadService {
         if (domain == WeighmentImageDomain.DELIVERY) {
             return "RETAIL";
         }
-        LiftingSchedule schedule = scheduleRepository
-                .findByScheduleIdAndSupervisorId(normalizedScheduleId, supervisor.getSupervisor().getCode())
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Schedule not found: " + normalizedScheduleId));
+        LiftingSchedule schedule = scheduleAccessService.requireLifting(supervisor, normalizedScheduleId);
         return retailEnrichmentService.resolveSaleType(schedule.getOrderSource());
     }
 

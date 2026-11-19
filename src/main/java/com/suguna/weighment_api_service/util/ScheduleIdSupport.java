@@ -23,6 +23,10 @@ public final class ScheduleIdSupport {
               OR TO_CHAR(w.schedule_no) = REGEXP_SUBSTR(TRIM(?), '^[^/]+'))
             """;
 
+    /** Farm lifting header only — delivery complete inserts extra rows with {@code source = DELIVERY}. */
+    public static final String WEIGHMENT_EXCLUDE_DELIVERY_SOURCE =
+            " AND NVL(UPPER(TRIM(w.source)), 'X') <> 'DELIVERY' ";
+
     private ScheduleIdSupport() {}
 
     public static String normalize(String scheduleId) {

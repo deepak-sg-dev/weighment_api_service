@@ -28,6 +28,7 @@ import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.util.DcItemCodeSupport;
 import com.suguna.weighment_api_service.util.RegisteredOfficeAddressSupport;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
+import com.suguna.weighment_api_service.util.VehicleRegistrationSupport;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -81,15 +82,28 @@ public class ScheduleService {
         }
 
         String supervisorCode = supervisor.getSupervisor().getCode();
-        List<LiftingSchedule> schedules = scheduleRepository.findBySupervisorIdAndStatusIn(
-                supervisorCode, statusFilter.statuses(), listFilter, statusFilter.isIncludeAll());
+        List<LiftingSchedule> schedules;
+        if (supervisor.isDriver()) {
+            String plate = requireDriverVehicleNo(supervisor);
+            schedules = scheduleRepository.findCompletedByVehicleNo(plate, listFilter);
+        } else {
+            schedules = scheduleRepository.findBySupervisorIdAndStatusIn(
+                    supervisorCode, statusFilter.statuses(), listFilter, statusFilter.isIncludeAll());
+        }
 
         List<String> retailScheduleIds = schedules.stream()
                 .filter(retailEnrichmentService::isRetail)
                 .map(LiftingSchedule::getScheduleId)
                 .toList();
+        String retailScopeCode = supervisor.isDriver()
+                ? schedules.stream()
+                        .map(LiftingSchedule::getSupervisorId)
+                        .filter(code -> code != null && !code.isBlank())
+                        .findFirst()
+                        .orElse(supervisorCode)
+                : supervisorCode;
         var retailOrdersBySchedule =
-                retailEnrichmentService.loadListOrdersBatch(supervisorCode, retailScheduleIds);
+                retailEnrichmentService.loadListOrdersBatch(retailScopeCode, retailScheduleIds);
 
         List<ScheduleSummaryDto> summaries = schedules.stream()
                 .map(schedule -> {
@@ -111,21 +125,27 @@ public class ScheduleService {
 
     public ScheduleDetailResponse getScheduleDetails(AuthenticatedSupervisor supervisor, String scheduleId) {
         LiftingSchedule schedule = loadSchedule(supervisor, scheduleId);
-        String supervisorCode = supervisor.getSupervisor().getCode();
+        String liftingSupervisor =
+                schedule.getSupervisorId() != null && !schedule.getSupervisorId().isBlank()
+                        ? schedule.getSupervisorId()
+                        : supervisor.getSupervisor().getCode();
         String saleType = retailEnrichmentService.resolveSaleType(schedule.getOrderSource());
-        var deliveries = retailEnrichmentService.loadDetailDeliveries(supervisorCode, schedule);
+        var deliveries = retailEnrichmentService.loadDetailDeliveries(liftingSupervisor, schedule);
         String deliveryStatus = resolveScheduleDeliveryStatus(
                 schedule, saleType, retailEnrichmentService.resolveDeliveryStatus(deliveries, saleType));
         ScheduleDetailDto detail = ScheduleMapper.toDetail(
                 schedule, saleType, deliveries, deliveryStatus, supervisor.getSupervisor());
         scheduleOtpSqlClient
-                .findOtpContext(supervisorCode, schedule.getScheduleId())
+                .findOtpContext(liftingSupervisor, schedule.getScheduleId())
                 .ifPresent(row -> detail.setOtp(
                         ScheduleMapper.toOtpDetail(row, schedule, saleType, scheduleWorkflowService)));
         if (detail.getOtp() == null && "RETAIL".equals(saleType)) {
             detail.setOtp(ScheduleMapper.emptyOtpDetail(schedule, saleType, scheduleWorkflowService));
         }
-        detail.setWorkflow(scheduleWorkflowService.resolveForSaleType(saleType));
+        detail.setWorkflow(
+                supervisor.isDriver()
+                        ? scheduleWorkflowService.resolveForDriver()
+                        : scheduleWorkflowService.resolveForSaleType(saleType));
         applyItemGstToDc(detail, schedule);
         applyDcAddresses(detail, schedule);
         return ScheduleDetailResponse.success(detail);
@@ -138,8 +158,17 @@ public class ScheduleService {
         validateDevice(supervisor, request.getDeviceId());
         LiftingSchedule schedule = loadScheduleForMutation(supervisor, scheduleId);
         ensureNotClosed(schedule);
-        scheduleRepository.markDownloaded(supervisor.getSupervisor().getCode(), scheduleId, request);
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        if (supervisor.isDriver()) {
+            String plate = requireDriverVehicleNo(supervisor);
+            String updatedBy =
+                    schedule.getSupervisorId() != null && !schedule.getSupervisorId().isBlank()
+                            ? schedule.getSupervisorId()
+                            : plate;
+            scheduleRepository.markDownloadedByVehicle(plate, updatedBy, normalizedScheduleId, request);
+        } else {
+            scheduleRepository.markDownloaded(supervisor.getSupervisor().getCode(), scheduleId, request);
+        }
         return ScheduleActionResponse.success(
                 normalizedScheduleId, ScheduleStatus.DOWNLOADED.name(), "Schedule marked as downloaded");
     }
@@ -148,6 +177,7 @@ public class ScheduleService {
             AuthenticatedSupervisor supervisor,
             String scheduleId,
             StartScheduleRequest request) {
+        rejectDriverMutation(supervisor);
         validateDevice(supervisor, request.getDeviceId());
         LiftingSchedule schedule = loadScheduleForMutation(supervisor, scheduleId);
         ensureNotClosed(schedule);
@@ -173,6 +203,16 @@ public class ScheduleService {
     private LiftingSchedule loadSchedule(
             AuthenticatedSupervisor supervisor, String scheduleId, boolean lightweight) {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        if (supervisor.isDriver()) {
+            String plate = requireDriverVehicleNo(supervisor);
+            return scheduleRepository
+                    .findByScheduleIdAndVehicleNo(normalizedScheduleId, plate)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Schedule not found with id: "
+                                    + normalizedScheduleId
+                                    + " for vehicle "
+                                    + plate));
+        }
         String supervisorCode = supervisor.getSupervisor().getCode();
         var found = lightweight
                 ? scheduleRepository.findForActionByScheduleIdAndSupervisorId(normalizedScheduleId, supervisorCode)
@@ -184,6 +224,21 @@ public class ScheduleService {
                         + supervisorCode
                         + ". For ids containing '/' (e.g. 211342644/1.1), call GET /weighment/schedules/detail?scheduleId=... "
                         + "instead of a path segment, or URL-encode the slash as %2F."));
+    }
+
+    private static void rejectDriverMutation(AuthenticatedSupervisor supervisor) {
+        if (supervisor.isDriver()) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN, "Driver login can only view delivery schedules.");
+        }
+    }
+
+    private static String requireDriverVehicleNo(AuthenticatedSupervisor supervisor) {
+        String plate = VehicleRegistrationSupport.normalizeOrNull(supervisor.getVehicleNo());
+        if (plate == null) {
+            throw new ApiException(ErrorCode.BAD_REQUEST, "Driver token is missing vehicleNo. Login again.");
+        }
+        return plate;
     }
 
     private void validateDevice(AuthenticatedSupervisor supervisor, String deviceId) {

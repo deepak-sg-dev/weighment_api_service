@@ -24,7 +24,7 @@ public class DeviceLoginSqlClient {
                SET d.last_login_date = SYSDATE,
                    d.os = CASE WHEN ? IS NOT NULL THEN ? ELSE d.os END,
                    d.device_info = CASE WHEN ? IS NOT NULL THEN ? ELSE d.device_info END,
-                   d.login_source = 'BRO-WEIGHMENT',
+                   d.login_source = ?,
                    d.last_updated_date = SYSDATE
              WHERE d.application = ?
                AND (
@@ -52,16 +52,11 @@ public class DeviceLoginSqlClient {
               JOIN sug_organization_mv c
                 ON c.branch_id = d.organization_id
              WHERE d.application = ?
+               AND d.USER_TYPE= 'EMPLOYEE'
                AND (
                     d.androidid = ?
                  OR TO_CHAR(d.device_id) = ?
                  OR TO_CHAR(d.device_id_2) = ?
-                 OR EXISTS (
-                      SELECT 1
-                        FROM sug_mai_lifting_reg_user r
-                       WHERE r.device_id = ?
-                         AND r.user_name = b.emp_no
-                    )
                )
             """;
 
@@ -95,8 +90,7 @@ public class DeviceLoginSqlClient {
                             .supervisor(supervisor)
                             .build();
                 },
-                erpProperties.getApplicationCode(),
-                deviceId,
+                erpProperties.getDeviceLoginApplicationCode(),
                 deviceId,
                 deviceId,
                 deviceId);
@@ -125,7 +119,7 @@ public class DeviceLoginSqlClient {
                     """
                     UPDATE sug_mai_devicedata d
                        SET d.last_login_date = SYSDATE,
-                           d.login_source = 'BRO-WEIGHMENT',
+                           d.login_source = ?,
                            d.last_updated_date = SYSDATE
                      WHERE d.application = ?
                        AND (
@@ -134,7 +128,8 @@ public class DeviceLoginSqlClient {
                          OR TO_CHAR(d.device_id_2) = ?
                        )
                     """,
-                    erpProperties.getApplicationCode(),
+                    erpProperties.getDeviceLoginSource(),
+                    erpProperties.getDeviceLoginApplicationCode(),
                     deviceId,
                     deviceId,
                     deviceId);
@@ -146,7 +141,8 @@ public class DeviceLoginSqlClient {
                 os,
                 deviceInfo,
                 deviceInfo,
-                erpProperties.getApplicationCode(),
+                erpProperties.getDeviceLoginSource(),
+                erpProperties.getDeviceLoginApplicationCode(),
                 deviceId,
                 deviceId,
                 deviceId);

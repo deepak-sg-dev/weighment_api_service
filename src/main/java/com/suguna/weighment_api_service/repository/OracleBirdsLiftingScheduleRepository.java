@@ -31,8 +31,18 @@ public class OracleBirdsLiftingScheduleRepository implements ScheduleRepository 
     }
 
     @Override
+    public List<LiftingSchedule> findCompletedByVehicleNo(String compactVehicleNo, ScheduleListFilter listFilter) {
+        return scheduleSqlClient.listSchedulesByVehicle(compactVehicleNo, listFilter);
+    }
+
+    @Override
     public Optional<LiftingSchedule> findByScheduleIdAndSupervisorId(String scheduleId, String supervisorId) {
         return Optional.ofNullable(scheduleSqlClient.getScheduleDetails(supervisorId, scheduleId));
+    }
+
+    @Override
+    public Optional<LiftingSchedule> findByScheduleIdAndVehicleNo(String scheduleId, String compactVehicleNo) {
+        return Optional.ofNullable(scheduleSqlClient.getScheduleDetailsForVehicle(compactVehicleNo, scheduleId));
     }
 
     @Override
@@ -48,6 +58,12 @@ public class OracleBirdsLiftingScheduleRepository implements ScheduleRepository 
     @Override
     public void markDownloaded(String supervisorId, String scheduleId, MarkScheduleDownloadedRequest request) {
         scheduleSqlClient.markScheduleDownloaded(supervisorId, scheduleId, request);
+    }
+
+    @Override
+    public void markDownloadedByVehicle(
+            String compactVehicleNo, String updatedBy, String scheduleId, MarkScheduleDownloadedRequest request) {
+        scheduleSqlClient.markScheduleDownloadedByVehicle(compactVehicleNo, updatedBy, scheduleId, request);
     }
 
     @Override

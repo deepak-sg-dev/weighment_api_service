@@ -3,6 +3,7 @@ package com.suguna.weighment_api_service.integration.oracle;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.suguna.weighment_api_service.config.OracleErpProperties;
+import com.suguna.weighment_api_service.domain.DeliveryCompletedWeighmentHeader;
 import com.suguna.weighment_api_service.domain.RetailScheduleContext;
 import com.suguna.weighment_api_service.dto.delivery.StartRetailDeliveryOrderRequest;
 import com.suguna.weighment_api_service.dto.delivery.StartRetailDeliveryOrderResponse;
@@ -164,7 +165,6 @@ public class DeliveryWeighmentSqlClient {
 
         String deliveryKey =
                 WeighmentSubmitKeys.deliveryTransactionKey(schedule.getScheduleId(), orderId);
-        boolean dtlStored = weighmentDetailSqlClient.hasDeliveryDetailLines(deliveryKey);
         boolean weighmentInMessage = DeliveryOrderMessageSupport.hasWeighmentReceived(state.message());
         boolean orderClosed = RetailOrderDeliveryStatus.isDeliveryComplete(state.uploadedFlag(), state.message());
         Double netWeight = request.getTotals() != null ? request.getTotals().getTotalNet() : null;
@@ -180,8 +180,9 @@ public class DeliveryWeighmentSqlClient {
             updateDeliveredQuantities(schedule, order.getRetailerId(), orderId, netWeight, totalBirds);
         }
 
-        if (!dtlStored) {
-            persistDeliveryDetailLines(schedule, order, orderId, deliveryKey, request);
+        OrderMessageState afterCompleteCheck = loadMessageState(schedule, orderId);
+        if (isOrderDeliveryComplete(afterCompleteCheck)) {
+            persistDeliveryHeaderAndDetails(schedule, order, orderId, deliveryKey, request);
         }
 
         syncLiftingDeliveryStatus(schedule);
@@ -219,27 +220,61 @@ public class DeliveryWeighmentSqlClient {
         ensureDeliveryStarted(state);
     }
 
-    private void persistDeliveryDetailLines(
+    private void persistDeliveryHeaderAndDetails(
             RetailScheduleContext schedule,
             RetailDeliveryOrderDetailDto order,
             String orderId,
             String deliveryKey,
             SubmitDeliveryWeighmentRequest request) {
-        String scheduleId = schedule.getScheduleId();
-        String supervisorCode = schedule.getSupervisorCode();
-        weighmentHeaderSqlClient.ensureHeaderForSchedule(scheduleId, supervisorCode);
-        long transId = weighmentDetailSqlClient
-                .resolveTransId(scheduleId, supervisorCode)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Weighment header trans_id not found for schedule " + scheduleId));
+        long transId = persistCompletedDeliveryHeader(schedule, order, orderId, request);
         weighmentDetailSqlClient.insertDeliveryWeighmentDetails(
-                supervisorCode,
-                scheduleId,
+                schedule.getSupervisorCode(),
+                schedule.getScheduleId(),
                 transId,
                 orderId,
                 order.getRetailerId(),
                 deliveryKey,
                 request);
+    }
+
+    long persistCompletedDeliveryHeader(
+            RetailScheduleContext schedule,
+            RetailDeliveryOrderDetailDto order,
+            String orderId,
+            SubmitDeliveryWeighmentRequest request) {
+        DeliveryCompletedWeighmentHeader.DeliveryCompletedWeighmentHeaderBuilder header =
+                DeliveryCompletedWeighmentHeader.builder()
+                        .scheduleId(schedule.getScheduleId())
+                        .supervisorCode(schedule.getSupervisorCode())
+                        .retailOrderNo(orderId)
+                        .customerCode(order.getRetailerId())
+                        .customerName(order.getRetailerName())
+                        .orderedQty(order.getOrderedQuantity());
+        if (request != null) {
+            var totals = request.getTotals();
+            if (totals != null) {
+                header.noOfBirds(totals.getTotalBirds())
+                        .noOfCages(totals.getTotalCagesOrBatches())
+                        .emptyWt(totals.getTotalTare())
+                        .grossWt(totals.getTotalGross())
+                        .netWt(totals.getTotalNet())
+                        .avgWt(totals.getOverallAverageBirdWeight());
+            }
+            var shop = request.getShopValidation();
+            if (shop != null) {
+                header.latitude(shop.getLatitude()).longitude(shop.getLongitude());
+            }
+            var timeline = request.getTimeline();
+            if (timeline != null) {
+                header.wmStartTime(timeline.getWeighmentStartedAt())
+                        .wmEndTime(timeline.getWeighmentCompletedAt());
+            }
+            var payment = request.getPayment();
+            if (payment != null) {
+                header.manualDcNo(payment.getDcNumber());
+            }
+        }
+        return weighmentHeaderSqlClient.ensureCompletedDeliveryHeader(header.build());
     }
 
     public void recordShopPhoto(RetailScheduleContext schedule, String orderId, String fileKey) {
@@ -312,6 +347,8 @@ public class DeliveryWeighmentSqlClient {
         args[1] = orderId;
         System.arraycopy(retailDeliverySqlClient.scheduleBindArgs(schedule), 0, args, 2, 7);
         jdbcTemplate.update(orderCompleteSql, args);
+        var order = retailDeliverySqlClient.getDeliveryOrder(schedule, orderId);
+        persistCompletedDeliveryHeader(schedule, order, orderId, null);
         syncLiftingDeliveryStatus(schedule);
     }
 

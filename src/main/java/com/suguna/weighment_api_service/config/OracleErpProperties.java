@@ -11,6 +11,15 @@ public class OracleErpProperties {
      * Stored on {@code SUG_MAI_WEIGHMENT_IMAGE_REF.APPLICATION} (may differ from lifting {@link #applicationCode}).
      */
     private String weighmentImageRefApplicationCode = "WMT_APP";
+
+    /**
+     * {@code sug_mai_devicedata.application} for mobile device login only. Lifting orders stay on
+     * {@link #applicationCode} ({@code BRO-WEIGHMENT}).
+     */
+    private String deviceLoginApplicationCode = "WMT_APP";
+
+    /** Written on successful device login ({@code sug_mai_devicedata.login_source}). */
+    private String deviceLoginSource = "BRO-WEIGHMENT";
     private int defaultGeofenceRadiusMeters = 200;
     private int standardBirdsPerCage = 12;
     private long stableDurationMs = 2000L;
@@ -79,6 +88,22 @@ public class OracleErpProperties {
 
     public void setWeighmentImageRefApplicationCode(String weighmentImageRefApplicationCode) {
         this.weighmentImageRefApplicationCode = weighmentImageRefApplicationCode;
+    }
+
+    public String getDeviceLoginApplicationCode() {
+        return deviceLoginApplicationCode;
+    }
+
+    public void setDeviceLoginApplicationCode(String deviceLoginApplicationCode) {
+        this.deviceLoginApplicationCode = deviceLoginApplicationCode;
+    }
+
+    public String getDeviceLoginSource() {
+        return deviceLoginSource;
+    }
+
+    public void setDeviceLoginSource(String deviceLoginSource) {
+        this.deviceLoginSource = deviceLoginSource;
     }
 
     public int getDefaultGeofenceRadiusMeters() {

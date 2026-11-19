@@ -17,7 +17,6 @@ import com.suguna.weighment_api_service.dto.retail.UpdateRetailDeliveryVehicleRe
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleVehicleDto;
 import com.suguna.weighment_api_service.constants.ErrorCode;
 import com.suguna.weighment_api_service.exception.ApiException;
-import com.suguna.weighment_api_service.exception.BadRequestException;
 import com.suguna.weighment_api_service.exception.ConflictException;
 import com.suguna.weighment_api_service.exception.BusinessValidationException;
 import com.suguna.weighment_api_service.repository.RetailDeliveryRepository;
@@ -32,11 +31,15 @@ import org.springframework.stereotype.Service;
 public class RetailDeliveryService {
 
     private final RetailDeliveryRepository retailDeliveryRepository;
+    private final ScheduleAccessService scheduleAccessService;
     private final OracleErpProperties erpProperties;
 
     public RetailDeliveryService(
-            RetailDeliveryRepository retailDeliveryRepository, OracleErpProperties erpProperties) {
+            RetailDeliveryRepository retailDeliveryRepository,
+            ScheduleAccessService scheduleAccessService,
+            OracleErpProperties erpProperties) {
         this.retailDeliveryRepository = retailDeliveryRepository;
+        this.scheduleAccessService = scheduleAccessService;
         this.erpProperties = erpProperties;
     }
 
@@ -140,11 +143,7 @@ public class RetailDeliveryService {
     }
 
     private RetailScheduleContext loadSchedule(AuthenticatedSupervisor supervisor, String scheduleId) {
-        if (scheduleId == null || scheduleId.isBlank()) {
-            throw new BadRequestException("scheduleId is required");
-        }
-        return retailDeliveryRepository.loadRetailSchedule(
-                supervisor.getSupervisor().getCode(), ScheduleIdSupport.normalize(scheduleId));
+        return scheduleAccessService.loadRetailSchedule(supervisor, scheduleId);
     }
 
     private void validateCompletionRequest(CompleteRetailDeliveryRequest request) {

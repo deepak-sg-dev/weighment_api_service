@@ -4,11 +4,15 @@ import com.suguna.weighment_api_service.config.JwtProperties;
 import com.suguna.weighment_api_service.constants.ErrorCode;
 import com.suguna.weighment_api_service.domain.DeviceRegistration;
 import com.suguna.weighment_api_service.domain.SupervisorProfile;
+import com.suguna.weighment_api_service.auth.DriverVehicleMappingRow;
 import com.suguna.weighment_api_service.dto.auth.DeviceLoginRequest;
 import com.suguna.weighment_api_service.dto.auth.DeviceLoginResponse;
+import com.suguna.weighment_api_service.dto.auth.DriverDto;
+import com.suguna.weighment_api_service.dto.auth.LoginMenuDto;
 import com.suguna.weighment_api_service.dto.auth.LogoutRequest;
 import com.suguna.weighment_api_service.dto.auth.SupervisorDto;
 import com.suguna.weighment_api_service.dto.auth.SupervisorMeResponse;
+import java.util.List;
 import com.suguna.weighment_api_service.exception.ApiException;
 import com.suguna.weighment_api_service.integration.oracle.DeviceLoginSqlClient;
 import com.suguna.weighment_api_service.repository.DeviceRegistry;
@@ -25,26 +29,34 @@ public class AuthService {
 
     private final DeviceRegistry deviceRegistry;
     private final DeviceLoginSqlClient deviceLoginSqlClient;
+    private final DriverVehicleLoginService driverVehicleLoginService;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
 
     public AuthService(
             DeviceRegistry deviceRegistry,
             DeviceLoginSqlClient deviceLoginSqlClient,
+            DriverVehicleLoginService driverVehicleLoginService,
             JwtService jwtService,
             JwtProperties jwtProperties) {
         this.deviceRegistry = deviceRegistry;
         this.deviceLoginSqlClient = deviceLoginSqlClient;
+        this.driverVehicleLoginService = driverVehicleLoginService;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
     }
 
     public DeviceLoginResponse deviceLogin(DeviceLoginRequest request) {
+        if (request.getVehicleNo() != null && !request.getVehicleNo().isBlank()) {
+            DriverVehicleMappingRow mapping = driverVehicleLoginService.requireVehicleRegisteredToDevice(
+                    request.getDeviceId(), request.getVehicleNo());
+            return driverLoginSuccess(request, mapping);
+        }
         DeviceRegistration registration = deviceRegistry
                 .findByDeviceId(request.getDeviceId())
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.DEVICE_NOT_CONFIGURED,
-                        "Device is not mapped to a supervisor. Show device ID on activation screen."));
+                        "This device is not registered. Kindly register the device and try again."));
 
         if (!registration.isAuthorized()) {
             throw new ApiException(ErrorCode.UNAUTHORIZED_DEVICE);
@@ -65,14 +77,22 @@ public class AuthService {
                 .accessToken(accessToken)
                 .tokenType("Bearer")
                 .expiresIn(jwtProperties.getExpiresInSeconds())
+                .userType("APP")
+                .role("EMPLOYEE")
                 .supervisor(SupervisorDto.from(supervisor))
                 .build();
     }
 
     public SupervisorMeResponse currentSupervisor(AuthenticatedSupervisor authenticatedSupervisor) {
+        boolean driver = authenticatedSupervisor.isDriver();
         return SupervisorMeResponse.builder()
                 .success(true)
-                .supervisor(SupervisorDto.from(authenticatedSupervisor.getSupervisor()))
+                .userType(authenticatedSupervisor.getUserType())
+                .role(driver ? "DRIVER" : "EMPLOYEE")
+                .vehicleNo(authenticatedSupervisor.getVehicleNo())
+                .menus(driver ? driverMenus() : null)
+                .supervisor(driver ? null : SupervisorDto.from(authenticatedSupervisor.getSupervisor()))
+                .driver(DriverDto.from(authenticatedSupervisor))
                 .build();
     }
 
@@ -87,6 +107,49 @@ public class AuthService {
                 authenticatedSupervisor.getSupervisor().getCode(),
                 request.resolvedLatitude(),
                 request.resolvedLongitude());
+    }
+
+    private DeviceLoginResponse driverLoginSuccess(
+            DeviceLoginRequest request, DriverVehicleMappingRow mapping) {
+        String deviceId = request.getDeviceId().trim();
+        String compactVehicle =
+                mapping.vehicleNo() == null ? request.getVehicleNo().trim() : mapping.vehicleNo().trim();
+        String mobile = mapping.mobileNo() == null || mapping.mobileNo().isBlank()
+                ? null
+                : mapping.mobileNo().trim();
+        String vehicleType =
+                mapping.vehicleType() == null || mapping.vehicleType().isBlank()
+                        ? null
+                        : mapping.vehicleType().trim();
+        String transId =
+                mapping.transId() == null || mapping.transId().isBlank() ? deviceId : mapping.transId().trim();
+        SupervisorProfile driver = SupervisorProfile.builder()
+                .id(transId)
+                .code(compactVehicle)
+                .name(vehicleType)
+                .mobile(mobile)
+                .active(true)
+                .build();
+        String accessToken = jwtService.generateAccessToken(deviceId, driver, "DRIVER", compactVehicle);
+        log.info("driver login deviceId={} vehicleNo={}", deviceId, compactVehicle);
+        return DeviceLoginResponse.builder()
+                .success(true)
+                .accessToken(accessToken)
+                .tokenType("Bearer")
+                .expiresIn(jwtProperties.getExpiresInSeconds())
+                .userType("DRIVER")
+                .role("DRIVER")
+                .vehicleNo(compactVehicle)
+                .menus(driverMenus())
+                .driver(DriverDto.from(mapping, deviceId))
+                .build();
+    }
+
+    private static List<LoginMenuDto> driverMenus() {
+        return List.of(LoginMenuDto.builder()
+                .code("DELIVERY_SCHEDULES")
+                .path("/delivery/schedules")
+                .build());
     }
 
     private void recordLoginAudit(DeviceLoginRequest request, String supervisorCode) {

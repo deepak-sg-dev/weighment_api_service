@@ -18,7 +18,11 @@ public interface ScheduleRepository {
             ScheduleListFilter listFilter,
             boolean includeAllStatuses);
 
+    List<LiftingSchedule> findCompletedByVehicleNo(String compactVehicleNo, ScheduleListFilter listFilter);
+
     Optional<LiftingSchedule> findByScheduleIdAndSupervisorId(String scheduleId, String supervisorId);
+
+    Optional<LiftingSchedule> findByScheduleIdAndVehicleNo(String scheduleId, String compactVehicleNo);
 
     /** Lighter read for start/download (no GPS join). */
     Optional<LiftingSchedule> findForActionByScheduleIdAndSupervisorId(String scheduleId, String supervisorId);
@@ -26,6 +30,9 @@ public interface ScheduleRepository {
     LiftingSchedule save(LiftingSchedule schedule);
 
     void markDownloaded(String supervisorId, String scheduleId, MarkScheduleDownloadedRequest request);
+
+    void markDownloadedByVehicle(
+            String compactVehicleNo, String updatedBy, String scheduleId, MarkScheduleDownloadedRequest request);
 
     void start(String supervisorId, String scheduleId, StartScheduleRequest request);
 

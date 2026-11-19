@@ -22,7 +22,6 @@ import com.suguna.weighment_api_service.integration.oracle.RetailRetailerOtpReso
 import com.suguna.weighment_api_service.integration.oracle.ScheduleOtpSqlClient;
 import com.suguna.weighment_api_service.integration.oracle.ScheduleOtpSqlClient.ScheduleOtpRow;
 import com.suguna.weighment_api_service.repository.RetailDeliveryRepository;
-import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import java.security.SecureRandom;
@@ -37,7 +36,7 @@ public class ScheduleOtpService {
 
     private static final SecureRandom OTP_RANDOM = new SecureRandom();
 
-    private final ScheduleRepository scheduleRepository;
+    private final ScheduleAccessService scheduleAccessService;
     private final ScheduleOtpSqlClient scheduleOtpSqlClient;
     private final RetailDeliveryRepository retailDeliveryRepository;
     private final ScheduleWorkflowService scheduleWorkflowService;
@@ -46,14 +45,14 @@ public class ScheduleOtpService {
     private final OracleErpProperties erpProperties;
 
     public ScheduleOtpService(
-            ScheduleRepository scheduleRepository,
+            ScheduleAccessService scheduleAccessService,
             ScheduleOtpSqlClient scheduleOtpSqlClient,
             RetailDeliveryRepository retailDeliveryRepository,
             ScheduleWorkflowService scheduleWorkflowService,
             OtpResendTracker otpResendTracker,
             ApiV2Properties apiV2Properties,
             OracleErpProperties erpProperties) {
-        this.scheduleRepository = scheduleRepository;
+        this.scheduleAccessService = scheduleAccessService;
         this.scheduleOtpSqlClient = scheduleOtpSqlClient;
         this.retailDeliveryRepository = retailDeliveryRepository;
         this.scheduleWorkflowService = scheduleWorkflowService;
@@ -124,7 +123,10 @@ public class ScheduleOtpService {
         }
         String newOtp = generateOtp();
         scheduleOtpSqlClient.replacePartyOtp(
-                supervisor.getSupervisor().getCode(), scheduleId, partyType, newOtp);
+                scheduleAccessService.liftingSupervisorCode(supervisor, scheduleId),
+                scheduleId,
+                partyType,
+                newOtp);
         int count = otpResendTracker.recordResend(scheduleId, partyType, null);
         return buildResendResponse(scheduleId, partyType, count);
     }
@@ -134,8 +136,7 @@ public class ScheduleOtpService {
         if (deliveryId == null || deliveryId.isBlank()) {
             throw new BadRequestException("deliveryId is required for CUSTOMER OTP resend");
         }
-        RetailScheduleContext context = retailDeliveryRepository.loadRetailSchedule(
-                supervisor.getSupervisor().getCode(), scheduleId);
+        RetailScheduleContext context = scheduleAccessService.loadRetailSchedule(supervisor, scheduleId);
         if (retailDeliveryRepository.isRetailerOtpVerified(context, deliveryId.trim())) {
             throw new ConflictException(ErrorCode.OTP_ALREADY_VERIFIED, "OTP is already verified for this delivery");
         }
@@ -154,8 +155,7 @@ public class ScheduleOtpService {
             throw new BusinessValidationException(
                     ErrorCodes.BUSINESS_VALIDATION_FAILED, "OTP validation is disabled for this schedule");
         }
-        RetailScheduleContext context = retailDeliveryRepository.loadRetailSchedule(
-                supervisor.getSupervisor().getCode(), scheduleId);
+        RetailScheduleContext context = scheduleAccessService.loadRetailSchedule(supervisor, scheduleId);
         String deliveryId = request.getDeliveryId().trim();
         if (retailDeliveryRepository.isRetailerOtpVerified(context, deliveryId)) {
             throw new ConflictException(ErrorCode.OTP_ALREADY_VERIFIED, "OTP is already verified for this delivery");
@@ -209,15 +209,14 @@ public class ScheduleOtpService {
     private ScheduleOtpRow requireOtpRow(AuthenticatedSupervisor supervisor, String scheduleId) {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         return scheduleOtpSqlClient
-                .findOtpContext(supervisor.getSupervisor().getCode(), normalizedScheduleId)
+                .findOtpContext(
+                        scheduleAccessService.liftingSupervisorCode(supervisor, normalizedScheduleId),
+                        normalizedScheduleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Schedule", normalizedScheduleId));
     }
 
     private void ensureScheduleAccessible(AuthenticatedSupervisor supervisor, String scheduleId) {
-        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
-        scheduleRepository
-                .findByScheduleIdAndSupervisorId(normalizedScheduleId, supervisor.getSupervisor().getCode())
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule", normalizedScheduleId));
+        scheduleAccessService.requireLifting(supervisor, scheduleId);
     }
 
     private void validateDevice(AuthenticatedSupervisor supervisor, String deviceId) {
