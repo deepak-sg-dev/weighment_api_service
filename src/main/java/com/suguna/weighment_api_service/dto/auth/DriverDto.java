@@ -16,7 +16,11 @@ import lombok.Setter;
 @Setter
 public class DriverDto {
 
+    /** Display name for the driver app profile (not a person record in ERP). */
+    public static final String PROFILE_DISPLAY_NAME = "Delivery person";
+
     private String id;
+    private String name;
     private String vehicleNo;
     private String vehicleType;
     private String mobile;
@@ -29,6 +33,7 @@ public class DriverDto {
         }
         return DriverDto.builder()
                 .id(blankToNull(row.transId()))
+                .name(PROFILE_DISPLAY_NAME)
                 .vehicleNo(blankToNull(row.vehicleNo()))
                 .vehicleType(blankToNull(row.vehicleType()))
                 .mobile(blankToNull(row.mobileNo()))
@@ -44,6 +49,7 @@ public class DriverDto {
         SupervisorProfile profile = session.getSupervisor();
         return DriverDto.builder()
                 .id(profile == null ? null : blankToNull(profile.getId()))
+                .name(PROFILE_DISPLAY_NAME)
                 .vehicleNo(blankToNull(session.getVehicleNo()))
                 .vehicleType(profile == null ? null : blankToNull(profile.getName()))
                 .mobile(profile == null ? null : blankToNull(profile.getMobile()))

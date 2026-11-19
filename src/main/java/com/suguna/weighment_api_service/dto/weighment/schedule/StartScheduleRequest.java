@@ -19,9 +19,6 @@ public class StartScheduleRequest {
     @NotNull
     private Instant startedAt;
 
-    @Size(max = 32)
-    private String vehicleRegistration;
-
     @NotNull
     private GeoPointDto location;
 
@@ -50,14 +47,6 @@ public class StartScheduleRequest {
 
     public void setStartedAt(Instant startedAt) {
         this.startedAt = startedAt;
-    }
-
-    public String getVehicleRegistration() {
-        return vehicleRegistration;
-    }
-
-    public void setVehicleRegistration(String vehicleRegistration) {
-        this.vehicleRegistration = vehicleRegistration;
     }
 
     public GeoPointDto getLocation() {

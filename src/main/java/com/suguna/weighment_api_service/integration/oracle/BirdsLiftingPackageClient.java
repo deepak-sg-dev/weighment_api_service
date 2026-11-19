@@ -84,7 +84,7 @@ public class BirdsLiftingPackageClient {
         in.put(properties.getParameters().getDeviceId(), request.getDeviceId());
         in.put(properties.getParameters().getLocalTransactionId(), request.getLocalTransactionId());
         in.put(properties.getParameters().getStartedAt(), Timestamp.from(request.getStartedAt()));
-        in.put(properties.getParameters().getVehicleRegistration(), request.getVehicleRegistration());
+        in.put(properties.getParameters().getVehicleRegistration(), null);
         in.put(properties.getParameters().getLatitude(), request.getLocation().getLatitude());
         in.put(properties.getParameters().getLongitude(), request.getLocation().getLongitude());
         executeActionProcedure(procedure, in);

@@ -155,8 +155,7 @@ public class LiftingScheduleSqlClient {
     private static final String START_SCHEDULE_SQL =
             """
             UPDATE sug_mai_birds_lifting_order o
-               SET o.vehicleno = NVL(?, o.vehicleno),
-                   o.started_date = ?,
+               SET o.started_date = ?,
                    o.lifting_status = 'IN_PROGRESS',
                    o.updated_at = SYSDATE,
                    o.updated_by = ?
@@ -612,7 +611,6 @@ public class LiftingScheduleSqlClient {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         int updated = jdbcTemplate.update(
                 START_SCHEDULE_SQL,
-                VehicleRegistrationSupport.normalizeOrNull(request.getVehicleRegistration()),
                 Timestamp.from(request.getStartedAt()),
                 trimUpdatedBy(supervisorCode),
                 normalizedScheduleId,
@@ -622,10 +620,6 @@ public class LiftingScheduleSqlClient {
         if (updated == 0) {
             throw new ResourceNotFoundException("Schedule", scheduleId);
         }
-        weighmentHeaderSqlClient.updateVehicle(
-                normalizedScheduleId,
-                VehicleRegistrationSupport.normalizeOrNull(request.getVehicleRegistration()),
-                null);
         if (liftingProperties.isInvokeOrderStatusOnStart()) {
             invokeOrderStatusValidation(scheduleId);
         }

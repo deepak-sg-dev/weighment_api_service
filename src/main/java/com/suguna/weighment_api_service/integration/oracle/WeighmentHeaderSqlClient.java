@@ -45,6 +45,51 @@ public class WeighmentHeaderSqlClient {
              FETCH FIRST 1 ROW ONLY
             """;
 
+    /**
+     * Same HZ shop profile as schedule list: {@code hz_cust_accounts.account_number} → {@code hz_parties.party_name}
+     * + SHIP_TO site (address / GPS). Bind: customer code.
+     */
+    static final String HZ_SHOP_CUSTOMER_SQL =
+            """
+            SELECT customer_name, address, retailer_latitude, retailer_longitude
+              FROM (
+                SELECT hp.party_name AS customer_name,
+                       NVL(
+                           NULLIF(TRIM(
+                               NVL(TRIM(CAST(hl.address1 AS VARCHAR2(4000))), '')
+                               || NVL2(TRIM(CAST(hl.address2 AS VARCHAR2(4000))),
+                                       ', ' || TRIM(CAST(hl.address2 AS VARCHAR2(4000))), '')
+                               || NVL2(TRIM(CAST(hl.city AS VARCHAR2(4000))),
+                                       ', ' || TRIM(CAST(hl.city AS VARCHAR2(4000))), '')
+                           ), ''),
+                           NULLIF(TRIM(CAST(hcas.address_text AS VARCHAR2(4000))), '')
+                       ) AS address,
+                       CASE WHEN REGEXP_LIKE(TRIM(TO_CHAR(hcas.attribute11)), '^-?\\d+(\\.\\d+)?$')
+                            THEN TO_NUMBER(TRIM(TO_CHAR(hcas.attribute11))) END AS retailer_latitude,
+                       CASE WHEN REGEXP_LIKE(TRIM(TO_CHAR(hcas.attribute10)), '^-?\\d+(\\.\\d+)?$')
+                            THEN TO_NUMBER(TRIM(TO_CHAR(hcas.attribute10))) END AS retailer_longitude,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY TRIM(TO_CHAR(hca.account_number))
+                           ORDER BY hca.cust_account_id, csu.site_use_id
+                       ) AS rn
+                  FROM apps.hz_cust_accounts hca
+                  JOIN apps.hz_parties hp
+                    ON hp.party_id = hca.party_id
+                  LEFT JOIN apps.hz_cust_acct_sites_all hcas
+                    ON hcas.cust_account_id = hca.cust_account_id
+                  LEFT JOIN apps.hz_cust_site_uses_all csu
+                    ON csu.cust_acct_site_id = hcas.cust_acct_site_id
+                   AND csu.site_use_code = 'SHIP_TO'
+                   AND csu.status = 'A'
+                  LEFT JOIN apps.hz_party_sites hps
+                    ON hps.party_site_id = hcas.party_site_id
+                  LEFT JOIN apps.hz_locations hl
+                    ON hl.location_id = hps.location_id
+                 WHERE TRIM(TO_CHAR(hca.account_number)) = TRIM(?)
+              )
+             WHERE rn = 1
+            """;
+
     static final String INSERT_COMPLETED_DELIVERY_HEADER_SQL =
             """
             INSERT INTO sug_mai_birds_weighment (
@@ -59,6 +104,7 @@ public class WeighmentHeaderSqlClient {
                 order_number,
                 customer_code,
                 customer_name,
+                customer_location,
                 vehicle_no,
                 dirver_name,
                 no_of_birds,
@@ -74,6 +120,7 @@ public class WeighmentHeaderSqlClient {
                 manual_dc_no,
                 status,
                 source,
+                dc_date,
                 creation_date,
                 updated_date
             )
@@ -87,7 +134,8 @@ public class WeighmentHeaderSqlClient {
                    ?,
                    ?,
                    ?,
-                   ?,
+                   NVL(?, hz.customer_name),
+                   hz.address,
                    o.vehicleno,
                    o.driver,
                    ?,
@@ -96,16 +144,22 @@ public class WeighmentHeaderSqlClient {
                    ?,
                    ?,
                    ?,
-                   ?,
-                   ?,
+                   NVL(?, NULLIF(hz.retailer_latitude, 0)),
+                   NVL(?, NULLIF(hz.retailer_longitude, 0)),
                    ?,
                    ?,
                    ?,
                    'Completed',
                    'DELIVERY',
+                   o.order_request_date,
                    SYSDATE,
                    SYSDATE
               FROM sug_mai_birds_lifting_order o
+              LEFT JOIN (
+            """
+            + HZ_SHOP_CUSTOMER_SQL
+            + """
+              ) hz ON 1 = 1
              WHERE """
             + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
             + """
@@ -139,6 +193,7 @@ public class WeighmentHeaderSqlClient {
                 dirver_name,
                 status,
                 npick_status,
+                dc_date,
                 creation_date,
                 source
             )
@@ -155,6 +210,7 @@ public class WeighmentHeaderSqlClient {
                    o.driver,
                    'Pending',
                    'Y',
+                   o.order_request_date,
                    SYSDATE,
                    NVL(o.source, 'MOBILE')
               FROM sug_mai_birds_lifting_order o
@@ -177,6 +233,24 @@ public class WeighmentHeaderSqlClient {
               OR TRIM(w.order_number) = TRIM(?)
               OR TRIM(w.order_number) = REGEXP_SUBSTR(TRIM(?), '^[^/]+')
              )
+            """;
+
+    private static final String FILL_DELIVERY_CUSTOMER_SQL =
+            """
+            MERGE INTO sug_mai_birds_weighment w
+            USING (
+            """
+            + HZ_SHOP_CUSTOMER_SQL
+            + """
+            ) hz
+            ON (w.trans_id = ?)
+            WHEN MATCHED THEN UPDATE SET
+                   w.customer_code = NVL(NULLIF(TRIM(w.customer_code), ''), ?),
+                   w.customer_name = NVL(NULLIF(TRIM(w.customer_name), ''), NVL(?, hz.customer_name)),
+                   w.customer_location = NVL(NULLIF(TRIM(w.customer_location), ''), hz.address),
+                   w.latitude = NVL(w.latitude, NULLIF(hz.retailer_latitude, 0)),
+                   w.longitude = NVL(w.longitude, NULLIF(hz.retailer_longitude, 0)),
+                   w.updated_date = SYSDATE
             """;
 
     private static final String UPDATE_VEHICLE_SQL =
@@ -225,12 +299,14 @@ public class WeighmentHeaderSqlClient {
         String scheduleId = ScheduleIdSupport.normalize(header.getScheduleId());
         String orderNo = header.getRetailOrderNo() == null ? "" : header.getRetailOrderNo().trim();
         String supervisorCode = header.getSupervisorCode();
+        String customerCode = blankToNull(header.getCustomerCode());
+        String customerName = blankToNull(header.getCustomerName());
         int inserted = jdbcTemplate.update(
                 INSERT_COMPLETED_DELIVERY_HEADER_SQL,
                 header.getOrderedQty(),
                 orderNo,
-                blankToNull(header.getCustomerCode()),
-                blankToNull(header.getCustomerName()),
+                customerCode,
+                customerName,
                 header.getNoOfBirds(),
                 header.getNoOfCages(),
                 header.getEmptyWt(),
@@ -242,6 +318,7 @@ public class WeighmentHeaderSqlClient {
                 timestamp(header.getWmStartTime()),
                 timestamp(header.getWmEndTime()),
                 blankToNull(header.getManualDcNo()),
+                customerCode,
                 scheduleId,
                 scheduleId,
                 supervisorCode,
@@ -251,6 +328,9 @@ public class WeighmentHeaderSqlClient {
                 orderNo);
         Long transId = findDeliveryHeaderTransId(scheduleId, orderNo);
         if (transId != null) {
+            if (inserted == 0) {
+                fillDeliveryCustomer(transId, customerCode, customerName);
+            }
             return transId;
         }
         if (inserted == 0) {
@@ -259,6 +339,15 @@ public class WeighmentHeaderSqlClient {
         }
         throw new ResourceNotFoundException(
                 "Delivery weighment header for order " + orderNo + " schedule " + scheduleId);
+    }
+
+    private void fillDeliveryCustomer(long transId, String customerCode, String customerName) {
+        jdbcTemplate.update(
+                FILL_DELIVERY_CUSTOMER_SQL,
+                customerCode,
+                transId,
+                customerCode,
+                customerName);
     }
 
     public Long findDeliveryHeaderTransId(String scheduleId, String retailOrderNo) {
