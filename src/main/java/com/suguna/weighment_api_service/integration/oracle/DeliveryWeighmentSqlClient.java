@@ -51,6 +51,7 @@ public class DeliveryWeighmentSqlClient {
     private final String updateDeliveredQtySql;
     private final String startDeliveryOrderSql;
     private final String orderCompleteSql;
+    private final String submitCompleteSql;
     private final String loadOrderStateSql;
     private final String loadOrderStateByShopSql;
 
@@ -99,6 +100,12 @@ public class DeliveryWeighmentSqlClient {
                         + RetailOrderLineSqlSupport.whereDetailOrderNo()
                         + " AND "
                         + existsSchedule;
+        this.submitCompleteSql =
+                retailOrderSql.buildDetailUpdatePrefix()
+                        + retailOrderSql.buildSubmitCompleteSetClause()
+                        + RetailOrderLineSqlSupport.updateWhereClause()
+                        + RetailOrderLineSqlSupport.whereDetailOrderNoNumeric()
+                        + RetailOrderLineSqlSupport.andDetailCustomerCodeBind().trim();
         this.loadOrderStateSql = retailOrderSql.buildLoadOrderMessageStateSql();
         this.loadOrderStateByShopSql =
                 retailOrderSql.buildLoadOrderMessageStateByShopSql() + "\n           FOR UPDATE WAIT 1";
@@ -157,40 +164,37 @@ public class DeliveryWeighmentSqlClient {
     public SubmitDeliveryWeighmentResponse submitWeighment(
             RetailScheduleContext schedule, SubmitDeliveryWeighmentRequest request) {
         String orderId = request.getOrderId().trim();
-        var order = retailDeliverySqlClient.getDeliveryOrder(schedule, orderId);
-        validateCustomer(order.getRetailerId(), request);
-
         OrderMessageState state = loadMessageState(schedule, orderId);
+        validateCustomer(state.customerCode(), request);
         ensureDeliveryStarted(state);
+        validateRetailerOtp(state, request);
 
         String deliveryKey =
                 WeighmentSubmitKeys.deliveryTransactionKey(schedule.getScheduleId(), orderId);
         boolean weighmentInMessage = DeliveryOrderMessageSupport.hasWeighmentReceived(state.message());
-        boolean orderClosed = RetailOrderDeliveryStatus.isDeliveryComplete(state.uploadedFlag(), state.message());
+        boolean orderClosed = isOrderDeliveryComplete(state);
         Double netWeight = request.getTotals() != null ? request.getTotals().getTotalNet() : null;
         Integer totalBirds = request.getTotals() != null ? request.getTotals().getTotalBirds() : null;
 
+        String messageForComplete = state.message();
         if (!weighmentInMessage && !orderClosed) {
             String payloadJson = serializePayload(request);
-            String newMessage =
+            messageForComplete =
                     DeliveryOrderMessageSupport.mergeWeighmentPayload(state.message(), orderId, payloadJson);
-            updateOrder(schedule, order.getRetailerId(), orderId, newMessage, netWeight, totalBirds);
-            maybeMarkComplete(schedule, orderId, newMessage);
-        } else if (netWeight != null || totalBirds != null) {
-            updateDeliveredQuantities(schedule, order.getRetailerId(), orderId, netWeight, totalBirds);
+        }
+        if (!orderClosed) {
+            completeShopLineWithWeighment(
+                    state.customerCode(), orderId, messageForComplete, netWeight, totalBirds);
         }
 
-        OrderMessageState afterCompleteCheck = loadMessageState(schedule, orderId);
-        if (isOrderDeliveryComplete(afterCompleteCheck)) {
-            persistDeliveryHeaderAndDetails(schedule, order, orderId, deliveryKey, request);
-        }
-
+        var order = slimShopOrder(state);
+        persistDeliveryHeaderAndDetails(schedule, order, orderId, deliveryKey, request);
         syncLiftingDeliveryStatus(schedule);
-
-        OrderMessageState after = loadMessageState(schedule, orderId);
-        String deliveryStatus = RetailOrderDeliveryStatus.resolveForOrder(
-                after.delvStatus(), after.uploadedFlag(), after.message(), after.deliveryStartedAt());
-        return receivedResponse(schedule.getScheduleId(), orderId, Instant.now(), deliveryStatus);
+        return receivedResponse(
+                schedule.getScheduleId(),
+                orderId,
+                Instant.now(),
+                RetailOrderDeliveryStatus.toApiStatus(RetailOrderDeliveryStatus.COMPLETED));
     }
 
     private boolean isOrderDeliveryComplete(OrderMessageState state) {
@@ -215,9 +219,50 @@ public class DeliveryWeighmentSqlClient {
 
     /** Validates order exists and delivery has been started when {@code retail-order-delivery-require-start} is on. */
     public void assertReadyForDeliveryEvidence(RetailScheduleContext schedule, String orderId) {
-        retailDeliverySqlClient.getDeliveryOrder(schedule, orderId);
         OrderMessageState state = loadMessageState(schedule, orderId);
         ensureDeliveryStarted(state);
+    }
+
+    private void validateRetailerOtp(OrderMessageState state, SubmitDeliveryWeighmentRequest request) {
+        if (!erpProperties.isRetailOtpValidationEnabled()) {
+            return;
+        }
+        Instant expires = state.otpExpiresAt();
+        RetailRetailerOtpResolution resolution =
+                RetailRetailerOtpSupport.resolve(
+                        state.retailOtp(),
+                        expires,
+                        state.message(),
+                        Instant.now(),
+                        erpProperties.getRetailOtpStubCode());
+        if (!resolution.configured()) {
+            return;
+        }
+        if (resolution.expired()) {
+            throw new BusinessValidationException(ErrorCodes.OTP_EXPIRED, "Retailer OTP has expired");
+        }
+        String retailerOtp = extractOtp(request);
+        if (retailerOtp == null || !resolution.expectedCode().equals(retailerOtp)) {
+            throw new BusinessValidationException(ErrorCodes.INVALID_RETAILER_OTP, "Invalid retailer OTP");
+        }
+    }
+
+    private static String extractOtp(SubmitDeliveryWeighmentRequest request) {
+        if (request.getShopValidation() == null) {
+            return null;
+        }
+        String payload = request.getShopValidation().getOtpOrQrPayload();
+        if (payload == null || payload.isBlank()) {
+            return null;
+        }
+        return payload.trim();
+    }
+
+    private static RetailDeliveryOrderDetailDto slimShopOrder(OrderMessageState state) {
+        return RetailDeliveryOrderDetailDto.builder()
+                .retailerId(state.customerCode())
+                .orderedQuantity(state.orderedWeight())
+                .build();
     }
 
     private void persistDeliveryHeaderAndDetails(
@@ -341,15 +386,30 @@ public class DeliveryWeighmentSqlClient {
         if (!DeliveryOrderMessageSupport.isComplete(message)) {
             return;
         }
+        completeShopLine(schedule, orderId, message);
+        var order = retailDeliverySqlClient.getDeliveryOrder(schedule, orderId);
+        persistCompletedDeliveryHeader(schedule, order, orderId, null);
+        syncLiftingDeliveryStatus(schedule);
+    }
+
+    /** Marks this shop {@code DELV_STATUS = COMPLETED}. Schedule roll-up is {@link #syncLiftingDeliveryStatus}. */
+    private void completeShopLine(RetailScheduleContext schedule, String orderId, String message) {
         String finalMessage = DeliveryOrderMessageSupport.markUploadedComplete(message);
         Object[] args = new Object[1 + 1 + 7];
         args[0] = finalMessage;
         args[1] = orderId;
         System.arraycopy(retailDeliverySqlClient.scheduleBindArgs(schedule), 0, args, 2, 7);
         jdbcTemplate.update(orderCompleteSql, args);
-        var order = retailDeliverySqlClient.getDeliveryOrder(schedule, orderId);
-        persistCompletedDeliveryHeader(schedule, order, orderId, null);
-        syncLiftingDeliveryStatus(schedule);
+    }
+
+    private void completeShopLineWithWeighment(
+            String customerCode, String orderId, String message, Double netWeight, Integer totalBirds) {
+        String finalMessage = DeliveryOrderMessageSupport.markUploadedComplete(message);
+        int updated =
+                updateWithTimeout(submitCompleteSql, finalMessage, netWeight, totalBirds, orderId, customerCode);
+        if (updated == 0) {
+            throw new ResourceNotFoundException("Retail delivery order", orderId);
+        }
     }
 
     private void syncLiftingDeliveryStatus(RetailScheduleContext schedule) {
@@ -471,12 +531,20 @@ public class DeliveryWeighmentSqlClient {
     private OrderMessageState mapMessageState(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         Timestamp started = rs.getTimestamp("delivery_started_date");
         Instant startedInstant = started == null ? null : started.toInstant();
+        Timestamp otpExpires = rs.getTimestamp("otp_expires_at");
+        double orderedWeight = rs.getDouble("ordered_weight");
+        if (rs.wasNull()) {
+            orderedWeight = 0D;
+        }
         return new OrderMessageState(
                 rs.getString("customer_code"),
                 rs.getString("message"),
                 rs.getString("uploaded_flag"),
                 rs.getString("delv_status"),
-                startedInstant);
+                startedInstant,
+                orderedWeight == 0D ? null : orderedWeight,
+                rs.getString("retail_otp"),
+                otpExpires == null ? null : otpExpires.toInstant());
     }
 
     private static void validateRetailer(String expectedRetailerId, String providedRetailerId) {
@@ -539,5 +607,8 @@ public class DeliveryWeighmentSqlClient {
             String message,
             String uploadedFlag,
             String delvStatus,
-            Instant deliveryStartedAt) {}
+            Instant deliveryStartedAt,
+            Double orderedWeight,
+            String retailOtp,
+            Instant otpExpiresAt) {}
 }

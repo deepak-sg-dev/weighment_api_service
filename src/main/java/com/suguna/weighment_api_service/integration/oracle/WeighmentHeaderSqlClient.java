@@ -81,7 +81,7 @@ public class WeighmentHeaderSqlClient {
                    o.erpindentid,
                    o.mobileuserempid,
                    o.farmercode,
-                   NVL(f.farm_name_village, o.farmername),
+                   o.farmername,
                    o.branchcode,
                    NVL(NULLIF(TRIM(o.ordertype), ''), 'BROILER'),
                    ?,
@@ -106,8 +106,6 @@ public class WeighmentHeaderSqlClient {
                    SYSDATE,
                    SYSDATE
               FROM sug_mai_birds_lifting_order o
-              LEFT JOIN sug_farm_mst_header f
-                ON TRIM(f.farm_code) = TRIM(o.farmercode)
              WHERE """
             + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
             + """
@@ -226,10 +224,6 @@ public class WeighmentHeaderSqlClient {
     public long ensureCompletedDeliveryHeader(DeliveryCompletedWeighmentHeader header) {
         String scheduleId = ScheduleIdSupport.normalize(header.getScheduleId());
         String orderNo = header.getRetailOrderNo() == null ? "" : header.getRetailOrderNo().trim();
-        Long existing = findDeliveryHeaderTransId(scheduleId, orderNo);
-        if (existing != null) {
-            return existing;
-        }
         String supervisorCode = header.getSupervisorCode();
         int inserted = jdbcTemplate.update(
                 INSERT_COMPLETED_DELIVERY_HEADER_SQL,

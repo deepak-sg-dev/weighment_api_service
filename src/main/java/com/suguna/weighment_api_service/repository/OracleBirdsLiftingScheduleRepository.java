@@ -51,6 +51,11 @@ public class OracleBirdsLiftingScheduleRepository implements ScheduleRepository 
     }
 
     @Override
+    public Optional<LiftingSchedule> findForActionByScheduleIdAndVehicleNo(String scheduleId, String compactVehicleNo) {
+        return Optional.ofNullable(scheduleSqlClient.getScheduleForActionByVehicle(compactVehicleNo, scheduleId));
+    }
+
+    @Override
     public LiftingSchedule save(LiftingSchedule schedule) {
         throw new UnsupportedOperationException("Schedule persistence is handled via Oracle SQL/package operations");
     }

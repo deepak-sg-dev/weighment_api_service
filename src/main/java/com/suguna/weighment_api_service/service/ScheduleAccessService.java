@@ -33,7 +33,7 @@ public class ScheduleAccessService {
         if (!session.isDriver()) {
             return session.getSupervisor().getCode();
         }
-        LiftingSchedule lifting = requireLiftingForDriver(session, normalized);
+        LiftingSchedule lifting = requireLiftingForDriver(session, normalized, true);
         String emp = lifting.getSupervisorId();
         if (emp == null || emp.isBlank()) {
             throw new ResourceNotFoundException(
@@ -45,7 +45,7 @@ public class ScheduleAccessService {
     public LiftingSchedule requireLifting(AuthenticatedSupervisor session, String scheduleId) {
         String normalized = requireScheduleId(scheduleId);
         if (session.isDriver()) {
-            return requireLiftingForDriver(session, normalized);
+            return requireLiftingForDriver(session, normalized, false);
         }
         return scheduleRepository
                 .findByScheduleIdAndSupervisorId(normalized, session.getSupervisor().getCode())
@@ -55,7 +55,7 @@ public class ScheduleAccessService {
     public LiftingSchedule requireLiftingForAction(AuthenticatedSupervisor session, String scheduleId) {
         String normalized = requireScheduleId(scheduleId);
         if (session.isDriver()) {
-            return requireLiftingForDriver(session, normalized);
+            return requireLiftingForDriver(session, normalized, true);
         }
         return scheduleRepository
                 .findForActionByScheduleIdAndSupervisorId(normalized, session.getSupervisor().getCode())
@@ -68,15 +68,17 @@ public class ScheduleAccessService {
                 liftingSupervisorCode(session, normalized), normalized);
     }
 
-    private LiftingSchedule requireLiftingForDriver(AuthenticatedSupervisor session, String normalizedScheduleId) {
+    private LiftingSchedule requireLiftingForDriver(
+            AuthenticatedSupervisor session, String normalizedScheduleId, boolean lightweight) {
         String plate = VehicleRegistrationSupport.normalizeOrNull(session.getVehicleNo());
         if (plate == null) {
             throw new ApiException(ErrorCode.BAD_REQUEST, "Driver token is missing vehicleNo. Login again.");
         }
-        return scheduleRepository
-                .findByScheduleIdAndVehicleNo(normalizedScheduleId, plate)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Schedule not found with id: " + normalizedScheduleId + " for vehicle " + plate));
+        var found = lightweight
+                ? scheduleRepository.findForActionByScheduleIdAndVehicleNo(normalizedScheduleId, plate)
+                : scheduleRepository.findByScheduleIdAndVehicleNo(normalizedScheduleId, plate);
+        return found.orElseThrow(() -> new ResourceNotFoundException(
+                "Schedule not found with id: " + normalizedScheduleId + " for vehicle " + plate));
     }
 
     private static String requireScheduleId(String scheduleId) {

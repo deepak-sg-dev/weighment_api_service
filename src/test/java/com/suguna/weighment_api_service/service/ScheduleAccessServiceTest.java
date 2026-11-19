@@ -35,7 +35,7 @@ class ScheduleAccessServiceTest {
         LiftingSchedule lifting = new LiftingSchedule();
         lifting.setScheduleId("4747482");
         lifting.setSupervisorId("10001234");
-        when(scheduleRepository.findByScheduleIdAndVehicleNo("4747482", "TN34R4567"))
+        when(scheduleRepository.findForActionByScheduleIdAndVehicleNo("4747482", "TN34R4567"))
                 .thenReturn(Optional.of(lifting));
 
         assertEquals("10001234", accessService.liftingSupervisorCode(driver, "4747482"));
@@ -46,7 +46,7 @@ class ScheduleAccessServiceTest {
     @Test
     void driverUnknownVehicleSchedule_notFound() {
         AuthenticatedSupervisor driver = driverSession("TN34R4567");
-        when(scheduleRepository.findByScheduleIdAndVehicleNo("4747482", "TN34R4567"))
+        when(scheduleRepository.findForActionByScheduleIdAndVehicleNo("4747482", "TN34R4567"))
                 .thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> accessService.loadRetailSchedule(driver, "4747482"));
     }

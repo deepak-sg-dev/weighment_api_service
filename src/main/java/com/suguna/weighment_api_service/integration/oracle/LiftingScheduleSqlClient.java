@@ -455,6 +455,31 @@ public class LiftingScheduleSqlClient {
         return schedules.get(0);
     }
 
+    /**
+     * Driver start/download: list SQL only (no GPS view, no weighment scalar subqueries).
+     * Indent match first so {@code REGEXP_REPLACE} runs on one row.
+     */
+    public LiftingSchedule getScheduleForActionByVehicle(String compactVehicleNo, String scheduleId) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        String sql = listSchedulesSelect
+                + " WHERE "
+                + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+                + " AND NVL(o.application, ?) = ? AND "
+                + VEHICLE_COMPACT_MATCH;
+        List<LiftingSchedule> schedules = jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> mapListSchedule(rs),
+                normalizedScheduleId,
+                normalizedScheduleId,
+                erpProperties.getApplicationCode(),
+                erpProperties.getApplicationCode(),
+                compactVehicleNo);
+        if (schedules.isEmpty()) {
+            return null;
+        }
+        return schedules.get(0);
+    }
+
     public void markScheduleDownloaded(String supervisorCode, String scheduleId, MarkScheduleDownloadedRequest request) {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         int updated = jdbcTemplate.update(

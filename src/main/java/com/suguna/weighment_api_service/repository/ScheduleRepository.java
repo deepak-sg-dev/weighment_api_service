@@ -27,6 +27,8 @@ public interface ScheduleRepository {
     /** Lighter read for start/download (no GPS join). */
     Optional<LiftingSchedule> findForActionByScheduleIdAndSupervisorId(String scheduleId, String supervisorId);
 
+    Optional<LiftingSchedule> findForActionByScheduleIdAndVehicleNo(String scheduleId, String compactVehicleNo);
+
     LiftingSchedule save(LiftingSchedule schedule);
 
     void markDownloaded(String supervisorId, String scheduleId, MarkScheduleDownloadedRequest request);

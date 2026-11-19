@@ -72,8 +72,12 @@ public class DeliveryWeighmentService {
             StartRetailDeliveryOrderRequest request) {
         validateDevice(supervisor, request.getDeviceId());
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
-        ensureLiftingCompleted(supervisor, normalizedScheduleId);
-        String supervisorCode = scheduleAccessService.liftingSupervisorCode(supervisor, normalizedScheduleId);
+        LiftingSchedule lifting = scheduleAccessService.requireLiftingForAction(supervisor, normalizedScheduleId);
+        ensureLiftingCompleted(lifting);
+        String supervisorCode =
+                lifting.getSupervisorId() != null && !lifting.getSupervisorId().isBlank()
+                        ? lifting.getSupervisorId().trim()
+                        : scheduleAccessService.liftingSupervisorCode(supervisor, normalizedScheduleId);
         RetailScheduleContext schedule = RetailScheduleContext.builder()
                 .scheduleId(normalizedScheduleId)
                 .supervisorCode(supervisorCode)
@@ -92,12 +96,16 @@ public class DeliveryWeighmentService {
         validateShopValidation(normalizedScheduleId, request);
         validatePayment(request.getPayment());
 
-        ensureLiftingCompleted(supervisor, normalizedScheduleId);
-
-        RetailScheduleContext schedule = loadSchedule(supervisor, request.getScheduleId());
-        if (scheduleWorkflowService.isDeliveryStepEnabled(normalizedScheduleId, WeighmentWorkflowStep.OTP_VALIDATION)) {
-            validateRetailerOtp(schedule, request.getOrderId(), extractOtp(request));
-        }
+        LiftingSchedule lifting = scheduleAccessService.requireLiftingForAction(supervisor, normalizedScheduleId);
+        ensureLiftingCompleted(lifting);
+        String supervisorCode =
+                lifting.getSupervisorId() != null && !lifting.getSupervisorId().isBlank()
+                        ? lifting.getSupervisorId().trim()
+                        : scheduleAccessService.liftingSupervisorCode(supervisor, normalizedScheduleId);
+        RetailScheduleContext schedule = RetailScheduleContext.builder()
+                .scheduleId(normalizedScheduleId)
+                .supervisorCode(supervisorCode)
+                .build();
 
         return deliveryWeighmentRepository.submitWeighment(schedule, request);
     }
@@ -184,7 +192,10 @@ public class DeliveryWeighmentService {
     }
 
     private void ensureLiftingCompleted(AuthenticatedSupervisor session, String scheduleId) {
-        LiftingSchedule schedule = scheduleAccessService.requireLiftingForAction(session, scheduleId);
+        ensureLiftingCompleted(scheduleAccessService.requireLiftingForAction(session, scheduleId));
+    }
+
+    private void ensureLiftingCompleted(LiftingSchedule schedule) {
         if (schedule.getStatus() == ScheduleStatus.COMPLETED) {
             return;
         }
@@ -248,7 +259,7 @@ public class DeliveryWeighmentService {
     }
 
     private void validatePayment(PaymentInfo payment) {
-        if (payment == null || payment.getCollectionType() == null) {
+        if (payment == null || payment.getCollectionType() == null || payment.getCollectionType().isBlank()) {
             return;
         }
         String type = payment.getCollectionType().trim().toUpperCase(Locale.ROOT);
@@ -280,26 +291,6 @@ public class DeliveryWeighmentService {
             throw new BusinessValidationException(
                     ErrorCodes.BUSINESS_VALIDATION_FAILED, field + " is required");
         }
-    }
-
-    private void validateRetailerOtp(RetailScheduleContext schedule, String orderId, String retailerOtp) {
-        RetailRetailerOtpValidation.validate(
-                erpProperties, retailDeliveryRepository.resolveRetailerOtp(schedule, orderId), retailerOtp);
-    }
-
-    private static String extractOtp(SubmitDeliveryWeighmentRequest request) {
-        if (request.getShopValidation() == null) {
-            return null;
-        }
-        String payload = request.getShopValidation().getOtpOrQrPayload();
-        if (payload == null || payload.isBlank()) {
-            return null;
-        }
-        String trimmed = payload.trim();
-        if (trimmed.length() <= 8 && trimmed.chars().allMatch(Character::isDigit)) {
-            return trimmed;
-        }
-        return trimmed;
     }
 
     private void validateDevice(AuthenticatedSupervisor supervisor, String deviceId) {

@@ -814,6 +814,24 @@ public class RetailOrderLineSqlSupport {
                 + " AND ROWNUM = 1";
     }
 
+    /**
+     * Weighment submit: message + delivered qty + {@code DELV_STATUS = COMPLETED} in one DTL update
+     * (no lifting/HZ {@code EXISTS}). Binds: message, weight, birds.
+     */
+    public String buildSubmitCompleteSetClause() {
+        return buildMessageUpdateSetClause()
+                + """
+                   ,
+                   rod.uploaded_flag = 'Y',
+                   rod."""
+                + OracleErpColumns.DELV_STATUS
+                + " = 'COMPLETED',\n                   rod."
+                + OracleErpColumns.DELV_END_DT
+                + " = SYSDATE"
+                + buildMarkRetailOtpVerifiedSetSuffix()
+                + "\n";
+    }
+
     private String buildLoadOrderMessageStateSelectFromDtl() {
         String statusSelect =
                 "NVL(rod." + OracleErpColumns.DELV_STATUS + ", 'PENDING') AS delv_status";
@@ -821,11 +839,16 @@ public class RetailOrderLineSqlSupport {
         return """
             SELECT TO_CHAR(rod.customer_code) AS customer_code,
                    rod.message, rod.uploaded_flag,
+                   rod.weight AS ordered_weight,
                    """
                 + statusSelect
                 + ",\n                   "
                 + dateSelect
-                + "\n              FROM "
+                + ",\n                   rod."
+                + OracleErpColumns.RETAIL_OTP
+                + " AS retail_otp,\n                   rod."
+                + OracleErpColumns.OTP_EXPIRES_AT
+                + " AS otp_expires_at\n              FROM "
                 + updateDetailTableName()
                 + " rod";
     }
