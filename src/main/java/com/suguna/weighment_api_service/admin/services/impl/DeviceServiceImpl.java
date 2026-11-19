@@ -111,11 +111,10 @@ public class DeviceServiceImpl implements DeviceService {
 
     @Override
     public DeviceDetailResponseDTO getDeviceById(
-            Long id) {
+            String id) {
 
         Device device =
-                repository.findFirstByDeviceId(
-                                BigDecimal.valueOf(id))
+                repository.findFirstByAndroidId(id)
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "Device not found"));
@@ -227,7 +226,7 @@ public class DeviceServiceImpl implements DeviceService {
                 request.getSupervisorCode());
 
         device.setApplication(
-                "WMT_APP");
+                "Test_APP");
 
         device.setCreatedBy(
                 BigDecimal.valueOf(2680));
@@ -275,12 +274,11 @@ public class DeviceServiceImpl implements DeviceService {
 
     @Override
     public UpdateDeviceResponseDTO updateDevice(
-            Long deviceId,
+            String deviceId,
             UpdateDeviceRequestDTO request) {
 
         Device device =
-                repository.findFirstByDeviceId(
-                                BigDecimal.valueOf(deviceId))
+                repository.findFirstByAndroidId(deviceId)
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "Device not found"));
@@ -326,12 +324,11 @@ public class DeviceServiceImpl implements DeviceService {
 
     @Override
     public UpdateDeviceStatusResponseDTO updateDeviceStatus(
-            Long deviceId,
+            String deviceId,
             UpdateDeviceStatusRequestDTO request) {
 
         Device device =
-                repository.findFirstByDeviceId(
-                                BigDecimal.valueOf(deviceId))
+                repository.findFirstByAndroidId(deviceId)
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "Device not found"));

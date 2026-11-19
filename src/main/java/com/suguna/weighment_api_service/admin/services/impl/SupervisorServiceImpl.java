@@ -110,6 +110,9 @@ public class SupervisorServiceImpl
         dto.setMobile(
                 supervisor.getContactNumber());
 
+        dto.setSupervisorCode(
+                supervisor.getEmpCode());
+
         dto.setDeviceImei(
                 supervisor.getDeviceId() != null
                         ? String.valueOf(

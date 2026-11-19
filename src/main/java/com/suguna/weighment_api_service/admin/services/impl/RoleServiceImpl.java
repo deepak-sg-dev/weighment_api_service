@@ -276,11 +276,10 @@ public class RoleServiceImpl implements RoleService {
 
         if (request.getStatus() != null) {
             role.setStatus(
-                    request.getStatus());
+                    mapStatus(request.getStatus()));
         }
 
-        role.setUpdatedAt(
-                new Date());
+        role.setUpdatedAt(new Date());
 
         roleRepository.save(role);
 
@@ -291,7 +290,6 @@ public class RoleServiceImpl implements RoleService {
 
         return response;
     }
-
     @Override
     public UpdateResponseDTO updatePermissions(
             Long roleId,
@@ -355,5 +353,21 @@ public class RoleServiceImpl implements RoleService {
         response.setUpdated(true);
 
         return response;
+    }
+    private String mapStatus(String status) {
+
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+
+        if ("ACTIVE".equalsIgnoreCase(status)) {
+            return "A";
+        }
+
+        if ("INACTIVE".equalsIgnoreCase(status)) {
+            return "I";
+        }
+
+        return status;
     }
 }

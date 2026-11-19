@@ -3,15 +3,12 @@ package com.suguna.weighment_api_service.admin.controller;
 import com.suguna.weighment_api_service.admin.dtos.requests.CreateDeviceRequestDTO;
 import com.suguna.weighment_api_service.admin.dtos.requests.UpdateDeviceRequestDTO;
 import com.suguna.weighment_api_service.admin.dtos.requests.UpdateDeviceStatusRequestDTO;
-
 import com.suguna.weighment_api_service.admin.dtos.responses.CreateDeviceResponseDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.DeviceDetailResponseDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.DeviceListResponseDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.UpdateDeviceResponseDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.UpdateDeviceStatusResponseDTO;
-
 import com.suguna.weighment_api_service.admin.services.DeviceService;
-
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -45,7 +42,7 @@ public class DeviceController {
 
     @GetMapping("/{id}")
     public ResponseEntity<DeviceDetailResponseDTO> getDeviceById(
-            @PathVariable Long id) {
+            @PathVariable String id) {
 
         return ResponseEntity.ok(
                 service.getDeviceById(id));
@@ -61,7 +58,7 @@ public class DeviceController {
 
     @PatchMapping("/{deviceId}")
     public ResponseEntity<UpdateDeviceResponseDTO> updateDevice(
-            @PathVariable Long deviceId,
+            @PathVariable String deviceId,
             @RequestBody UpdateDeviceRequestDTO request) {
 
         return ResponseEntity.ok(
@@ -72,7 +69,7 @@ public class DeviceController {
 
     @PatchMapping("/{deviceId}/status")
     public ResponseEntity<UpdateDeviceStatusResponseDTO> updateDeviceStatus(
-            @PathVariable Long deviceId,
+            @PathVariable String deviceId,
             @RequestBody UpdateDeviceStatusRequestDTO request) {
 
         return ResponseEntity.ok(
