@@ -91,15 +91,16 @@ public class MenuServiceImpl implements MenuService {
         menu.setMenuPath(request.getMenuPath());
         menu.setApplication(APP_NAME);
         menu.setParentId(request.getParentId());
-        menu.setMenuType(request.getMenuType());
+        menu.setMenuType(mapMenuType(request.getMenuType()));
         menu.setMenuFor("EMPLOYEE");
         menu.setSeq(request.getSeq());
-        menu.setStatus(request.getStatus());
+        menu.setStatus(mapStatus(request.getStatus()));
 
         menuRepository.save(menu);
 
         UpdateResponseDTO response = new UpdateResponseDTO();
         response.setUpdated(true);
+
         return response;
     }
 
@@ -124,7 +125,7 @@ public class MenuServiceImpl implements MenuService {
         }
 
         if (request.getMenuType() != null) {
-            menu.setMenuType(request.getMenuType());
+            menu.setMenuType(mapMenuType(request.getMenuType()));
         }
 
         if (request.getSeq() != null) {
@@ -132,13 +133,49 @@ public class MenuServiceImpl implements MenuService {
         }
 
         if (request.getStatus() != null) {
-            menu.setStatus(request.getStatus());
+            menu.setStatus(mapStatus(request.getStatus()));
         }
 
         menuRepository.save(menu);
 
         UpdateResponseDTO response = new UpdateResponseDTO();
         response.setUpdated(true);
+
         return response;
+    }
+
+    private String mapStatus(String status) {
+
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+
+        if ("ACTIVE".equalsIgnoreCase(status)) {
+            return "A";
+        }
+
+        if ("INACTIVE".equalsIgnoreCase(status)) {
+            return "I";
+        }
+
+        return status;
+    }
+
+    private String mapMenuType(String menuType) {
+
+        if (menuType == null || menuType.isBlank()) {
+            return null;
+        }
+
+        if ("MENU".equalsIgnoreCase(menuType)) {
+            return "MAIN";
+        }
+
+        if ("SUBMENU".equalsIgnoreCase(menuType)
+                || "CHILD".equalsIgnoreCase(menuType)) {
+            return "CHILD";
+        }
+
+        return menuType;
     }
 }
