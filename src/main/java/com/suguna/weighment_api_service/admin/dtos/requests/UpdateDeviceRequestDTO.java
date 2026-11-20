@@ -7,8 +7,16 @@ import lombok.Setter;
 @Setter
 public class UpdateDeviceRequestDTO {
 
+    private String deviceId;
+
+    private String imei;
+
     private Long branchId;
+
     private Long supervisorId;
-    private String supervisorCode;
+
+    private String supervisorName;
+
+
     private Long ledgerId;
 }

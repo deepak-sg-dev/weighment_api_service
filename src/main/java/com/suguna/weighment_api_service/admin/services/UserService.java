@@ -1,5 +1,5 @@
 package com.suguna.weighment_api_service.admin.services;
-
+import com.suguna.weighment_api_service.admin.dtos.requests.UpdateUserRequestDTO;
 import com.suguna.weighment_api_service.admin.dtos.requests.CreateUserRequestDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.UserListItemDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.UserListResponseDTO;
@@ -17,4 +17,6 @@ public interface UserService {
     UserListItemDTO getUserById(Long id);
 
     void createUser(CreateUserRequestDTO request);
+
+    void updateUser(Long id, UpdateUserRequestDTO request);
 }

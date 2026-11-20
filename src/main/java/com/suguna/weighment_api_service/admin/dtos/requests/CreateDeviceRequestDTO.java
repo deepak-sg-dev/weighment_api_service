@@ -9,6 +9,8 @@ public class CreateDeviceRequestDTO {
 
     private String imei;
 
+    private String deviceId;
+
     private Long branchId;
 
     private Long supervisorId;
@@ -16,4 +18,7 @@ public class CreateDeviceRequestDTO {
     private String supervisorCode;
 
     private Long ledgerId;
+
+    private String supervisorName;
+
 }

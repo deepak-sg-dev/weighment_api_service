@@ -16,8 +16,6 @@ public interface DeviceRepository
         extends JpaRepository<Device, Long>,
         JpaSpecificationExecutor<Device> {
 
-    // Existing methods
-
     List<Device> findByApplication(
             String application);
 
@@ -31,7 +29,13 @@ public interface DeviceRepository
     boolean existsByDeviceId(
             BigDecimal deviceId);
 
-    // Pagination methods
+    // NEW METHODS
+
+    Optional<Device> findFirstByAndroidId(
+            String androidId);
+
+    boolean existsByAndroidId(
+            String androidId);
 
     Page<Device> findByApplication(
             String application,
@@ -41,9 +45,6 @@ public interface DeviceRepository
             String application,
             BigDecimal organizationId,
             Pageable pageable);
-
-    // Existing search methods
-    // Can be kept or removed after migrating completely to Specification
 
     Page<Device> findByApplicationAndAndroidIdContainingIgnoreCase(
             String application,

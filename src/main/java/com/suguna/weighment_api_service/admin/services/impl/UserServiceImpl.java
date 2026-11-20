@@ -1,9 +1,11 @@
 package com.suguna.weighment_api_service.admin.services.impl;
 
+import com.suguna.weighment_api_service.admin.dtos.requests.UpdateUserRequestDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.PaginationDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.UserListItemDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.UserListResponseDTO;
 import com.suguna.weighment_api_service.admin.dtos.responses.UserSummaryDTO;
+import com.suguna.weighment_api_service.admin.dtos.requests.UpdateDeviceRequestDTO;
 import com.suguna.weighment_api_service.admin.entities.AppUser;
 import com.suguna.weighment_api_service.admin.entities.Role;
 import com.suguna.weighment_api_service.admin.dtos.requests.CreateUserRequestDTO;
@@ -227,6 +229,60 @@ public class UserServiceImpl implements UserService {
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
         user.setPasswordChangedAt(now);
+
+        userRepository.save(user);
+    }
+
+    @Override
+    public void updateUser(
+            Long id,
+            UpdateUserRequestDTO request) {
+
+        AppUser user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (request.getName() != null) {
+            user.setName(request.getName().trim());
+        }
+
+        if (request.getMobile() != null
+                && !request.getMobile().isBlank()) {
+            user.setMobile(Long.valueOf(request.getMobile()));
+        }
+
+        if (request.getEmail() != null) {
+            user.setEmail(request.getEmail());
+        }
+
+        if (request.getRoleId() != null) {
+            user.setRoleId(request.getRoleId());
+        }
+
+        if (request.getBranchId() != null) {
+            user.setBranchId(String.valueOf(request.getBranchId()));
+        }
+
+        if (request.getUserType() != null) {
+            user.setUserType(request.getUserType());
+        }
+
+        if (request.getActive() != null) {
+            user.setStatus(
+                    Boolean.TRUE.equals(request.getActive())
+                            ? "A"
+                            : "I"
+            );
+        }
+
+        if (request.getPassword() != null
+                && !request.getPassword().isBlank()) {
+            user.setPassword(
+                    passwordEncoder.encode(request.getPassword())
+            );
+            user.setPasswordChangedAt(new Date());
+        }
+
+        user.setUpdatedAt(new Date());
 
         userRepository.save(user);
     }

@@ -9,6 +9,8 @@ public class SupervisorResponseDTO {
 
     private String supervisorId;
 
+    private String supervisorCode;
+
     private String name;
 
     private Long branchId;

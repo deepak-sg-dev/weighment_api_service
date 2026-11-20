@@ -162,17 +162,23 @@ public class MasterServiceImpl implements MasterService {
                 .findByOrganizationIdAndApplication(
                         branchId,
                         "BRO-WEIGHMENT")
+                .stream()
+                .filter(supervisor ->
+                        "A".equalsIgnoreCase(
+                                supervisor.getStatus()))
                 .forEach(supervisor -> {
 
                     String empCode =
                             supervisor.getEmpCode();
 
                     if (empCode != null &&
-                            !uniqueSupervisors.containsKey(empCode)) {
+                            !uniqueSupervisors.containsKey(
+                                    empCode)) {
 
                         uniqueSupervisors.put(
                                 empCode,
-                                mapSupervisor(supervisor));
+                                mapSupervisor(
+                                        supervisor));
                     }
                 });
 

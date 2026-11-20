@@ -111,11 +111,10 @@ public class DeviceServiceImpl implements DeviceService {
 
     @Override
     public DeviceDetailResponseDTO getDeviceById(
-            Long id) {
+            String id) {
 
         Device device =
-                repository.findFirstByDeviceId(
-                                BigDecimal.valueOf(id))
+                repository.findFirstByAndroidId(id)
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "Device not found"));
@@ -150,14 +149,15 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
+
     public CreateDeviceResponseDTO createDevice(
             CreateDeviceRequestDTO request) {
 
-        if (request.getImei() == null ||
-                request.getImei().isBlank()) {
+        if (request.getDeviceId() == null ||
+                request.getDeviceId().isBlank()) {
 
             throw new RuntimeException(
-                    "IMEI is required");
+                    "Device Id is required");
         }
 
         if (request.getBranchId() == null) {
@@ -185,31 +185,48 @@ public class DeviceServiceImpl implements DeviceService {
                     "Ledger Id is required");
         }
 
-        BigDecimal deviceId =
-                new BigDecimal(
-                        request.getImei());
-
-        if (repository.existsByDeviceId(deviceId)) {
+        if (repository.existsByAndroidId(
+                request.getDeviceId())) {
 
             throw new RuntimeException(
-                    "Device already exists");
+                    "Device Id already exists");
         }
 
-        Device device =
-                new Device();
+        Device device = new Device();
+
+        device.setAndroidId(
+                request.getDeviceId());
+
+        if (request.getImei() != null &&
+                !request.getImei().isBlank()) {
+
+            try {
+
+                device.setDeviceId(
+                        new BigDecimal(
+                                request.getImei()));
+
+            } catch (NumberFormatException ex) {
+
+                throw new RuntimeException(
+                        "Invalid IMEI");
+            }
+
+        } else {
+
+            device.setDeviceId(
+                    BigDecimal.ZERO);
+        }
 
         device.setOrganizationId(
                 BigDecimal.valueOf(
                         request.getBranchId()));
 
-        device.setDeviceId(
-                deviceId);
-
         device.setEmpCode(
                 request.getSupervisorCode());
 
         device.setApplication(
-                "WMT_APP");
+                "Test_APP");
 
         device.setCreatedBy(
                 BigDecimal.valueOf(2680));
@@ -221,6 +238,12 @@ public class DeviceServiceImpl implements DeviceService {
         device.setEmpId(
                 BigDecimal.valueOf(
                         request.getSupervisorId()));
+
+        if (request.getSupervisorName() != null) {
+
+            device.setEmpName(
+                    request.getSupervisorName());
+        }
 
         device.setStatus("A");
 
@@ -251,12 +274,11 @@ public class DeviceServiceImpl implements DeviceService {
 
     @Override
     public UpdateDeviceResponseDTO updateDevice(
-            Long deviceId,
+            String deviceId,
             UpdateDeviceRequestDTO request) {
 
         Device device =
-                repository.findFirstByDeviceId(
-                                BigDecimal.valueOf(deviceId))
+                repository.findFirstByAndroidId(deviceId)
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "Device not found"));
@@ -302,12 +324,11 @@ public class DeviceServiceImpl implements DeviceService {
 
     @Override
     public UpdateDeviceStatusResponseDTO updateDeviceStatus(
-            Long deviceId,
+            String deviceId,
             UpdateDeviceStatusRequestDTO request) {
 
         Device device =
-                repository.findFirstByDeviceId(
-                                BigDecimal.valueOf(deviceId))
+                repository.findFirstByAndroidId(deviceId)
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "Device not found"));

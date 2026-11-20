@@ -19,16 +19,16 @@ public interface DeviceService {
             Long branchId);
 
     DeviceDetailResponseDTO getDeviceById(
-            Long id);
+            String id);
 
     CreateDeviceResponseDTO createDevice(
             CreateDeviceRequestDTO request);
 
     UpdateDeviceResponseDTO updateDevice(
-            Long deviceId,
+            String deviceId,
             UpdateDeviceRequestDTO request);
 
     UpdateDeviceStatusResponseDTO updateDeviceStatus(
-            Long deviceId,
+            String deviceId,
             UpdateDeviceStatusRequestDTO request);
 }
