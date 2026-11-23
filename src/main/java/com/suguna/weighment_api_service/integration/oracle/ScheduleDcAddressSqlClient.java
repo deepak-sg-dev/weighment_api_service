@@ -3,6 +3,7 @@ package com.suguna.weighment_api_service.integration.oracle;
 import com.suguna.weighment_api_service.config.OracleErpProperties;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -45,6 +46,7 @@ public class ScheduleDcAddressSqlClient {
                    hl.postal_code AS postal_code,
                    org.state_name AS state_name,
                    NVL(NULLIF(TRIM(org.region_code), ''), TRIM(org.gl_region)) AS region_code,
+                   TRIM(org.branch_name) AS branch_name,
                    sug_gst_pkg.get_reg_no('GSTN', 'O', org.branch_id) AS gst_no
               FROM sug_organization_mv org
               LEFT JOIN hr_locations_all hl ON hl.location_id = org.hr_location_id
@@ -67,7 +69,8 @@ public class ScheduleDcAddressSqlClient {
                        AS city,
                    hl.postal_code AS postal_code,
                    org.state_name AS state_name,
-                   NVL(NULLIF(TRIM(org.region_code), ''), TRIM(org.gl_region)) AS region_code
+                   NVL(NULLIF(TRIM(org.region_code), ''), TRIM(org.gl_region)) AS region_code,
+                   TRIM(org.branch_name) AS branch_name
               FROM sug_organization_mv org
               LEFT JOIN hr_locations_all hl ON hl.location_id = org.hr_location_id
              WHERE (TO_CHAR(org.branch_id) = TRIM(?) OR TRIM(org.branch_code) = TRIM(?))
@@ -77,6 +80,7 @@ public class ScheduleDcAddressSqlClient {
     private final JdbcTemplate jdbcTemplate;
     private final OracleErpProperties erpProperties;
     private final RetailOrderLineSqlSupport retailOrderSql;
+    private final ConcurrentHashMap<String, Optional<String>> registeredOfficeCache = new ConcurrentHashMap<>();
 
     public ScheduleDcAddressSqlClient(
             JdbcTemplate jdbcTemplate, OracleErpProperties erpProperties, RetailOrderLineSqlSupport retailOrderSql) {
@@ -92,15 +96,10 @@ public class ScheduleDcAddressSqlClient {
         String id = branchId == null ? "" : branchId.trim();
         String code = branchCode == null ? "" : branchCode.trim();
         try {
-            return firstNonEmpty(queryBranchAddress(BRANCH_ADDRESS_SQL, true, id, code));
+            return firstNonEmpty(queryBranchAddress(BRANCH_ADDRESS_SQL_NO_GST, false, id, code));
         } catch (DataAccessException ex) {
-            log.warn("Branch GST lookup failed, loading address without GST: {}", ex.getMessage());
-            try {
-                return firstNonEmpty(queryBranchAddress(BRANCH_ADDRESS_SQL_NO_GST, false, id, code));
-            } catch (DataAccessException retryEx) {
-                log.warn("Branch address lookup failed: {}", retryEx.getMessage());
-                return Optional.empty();
-            }
+            log.warn("Branch address lookup failed: {}", ex.getMessage());
+            return Optional.empty();
         }
     }
 
@@ -113,7 +112,8 @@ public class ScheduleDcAddressSqlClient {
                         blankToNull(rs.getString("postal_code")),
                         blankToNull(rs.getString("state_name")),
                         includeGst ? blankToNull(rs.getString("gst_no")) : null,
-                        blankToNull(rs.getString("region_code"))),
+                        blankToNull(rs.getString("region_code")),
+                        blankToNull(rs.getString("branch_name"))),
                 branchId,
                 branchCode);
     }
@@ -130,6 +130,13 @@ public class ScheduleDcAddressSqlClient {
      * {@code app.oracle.erp.dc-registered-office-ledger-id} (typically 2025).
      */
     public Optional<String> findRegisteredOffice(String branchId, String branchCode) {
+        String cacheKey = (branchId == null ? "" : branchId.trim())
+                + "|"
+                + (branchCode == null ? "" : branchCode.trim());
+        return registeredOfficeCache.computeIfAbsent(cacheKey, key -> loadRegisteredOffice(branchId, branchCode));
+    }
+
+    private Optional<String> loadRegisteredOffice(String branchId, String branchCode) {
         try {
             if (!isBlank(branchId) || !isBlank(branchCode)) {
                 List<String> rows = jdbcTemplate.query(
@@ -166,15 +173,10 @@ public class ScheduleDcAddressSqlClient {
         String location = blankToNull(preferredLocation);
         String code = customerCode.trim();
         try {
-            return firstNonEmpty(queryIndentCustomerAddress(true, location, code));
+            return firstNonEmpty(queryIndentCustomerAddress(false, location, code));
         } catch (DataAccessException ex) {
-            log.warn("Customer GST lookup failed, loading address without GST: {}", ex.getMessage());
-            try {
-                return firstNonEmpty(queryIndentCustomerAddress(false, location, code));
-            } catch (DataAccessException retryEx) {
-                log.warn("Indent customer address lookup failed: {}", retryEx.getMessage());
-                return Optional.empty();
-            }
+            log.warn("Indent customer address lookup failed: {}", ex.getMessage());
+            return Optional.empty();
         }
     }
 
@@ -188,7 +190,7 @@ public class ScheduleDcAddressSqlClient {
                     String state = blankToNull(rs.getString("state_name"));
                     String gstNo = blankToNull(rs.getString("gstn"));
                     return new PartyAddress(
-                            composeAddress(address, city, state, postal), city, postal, state, gstNo, null);
+                            composeAddress(address, city, state, postal), city, postal, state, gstNo, null, null);
                 },
                 location,
                 location,
@@ -232,14 +234,21 @@ public class ScheduleDcAddressSqlClient {
     }
 
     public record PartyAddress(
-            String address, String city, String postalCode, String state, String gstNo, String regionCode) {
+            String address,
+            String city,
+            String postalCode,
+            String state,
+            String gstNo,
+            String regionCode,
+            String branchName) {
         boolean isEmpty() {
             return address == null
                     && city == null
                     && postalCode == null
                     && state == null
                     && gstNo == null
-                    && regionCode == null;
+                    && regionCode == null
+                    && branchName == null;
         }
     }
 }

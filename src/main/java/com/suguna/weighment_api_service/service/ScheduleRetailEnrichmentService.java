@@ -99,6 +99,18 @@ public class ScheduleRetailEnrichmentService {
                 .toList();
     }
 
+    /** One shop for delivery DC — does not load every order on the schedule. */
+    public ScheduleDeliveryDto loadOneDelivery(String supervisorCode, LiftingSchedule schedule, String orderId) {
+        if (!isRetail(schedule)) {
+            return null;
+        }
+        RetailScheduleContext context = retailContextFromListRow(schedule, supervisorCode);
+        return retailDeliveryRepository
+                .findDeliveryOrderForSchedule(context, orderId)
+                .map(order -> toDeliveryDto(schedule, new RetailRow(order, locationFromSummary(order)), 1))
+                .orElse(null);
+    }
+
     public String resolveDeliveryStatus(String supervisorCode, LiftingSchedule schedule) {
         if (!isRetail(schedule)) {
             return "NOT_APPLICABLE";

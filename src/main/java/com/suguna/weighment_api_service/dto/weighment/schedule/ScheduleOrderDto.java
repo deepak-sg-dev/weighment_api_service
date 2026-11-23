@@ -2,7 +2,7 @@ package com.suguna.weighment_api_service.dto.weighment.schedule;
 
 public class ScheduleOrderDto {
 
-    /** Retail ntail order number ({@code order_no}). */
+    /** Retail shop order number ({@code sug_mai_retail_order_dtl.order_no}). */
     private String orderNo;
     private String customerCode;
     private String customerName;

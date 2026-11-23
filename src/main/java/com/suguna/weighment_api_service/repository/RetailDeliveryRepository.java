@@ -12,6 +12,7 @@ import com.suguna.weighment_api_service.dto.retail.RetailLocationDto;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import com.suguna.weighment_api_service.integration.oracle.RetailRetailerOtpResolution;
 
 public interface RetailDeliveryRepository {
@@ -19,6 +20,9 @@ public interface RetailDeliveryRepository {
     RetailScheduleContext loadRetailSchedule(String supervisorCode, String scheduleId);
 
     List<RetailDeliveryOrderSummaryDto> listDeliveryOrders(RetailScheduleContext schedule);
+
+    Optional<RetailDeliveryOrderSummaryDto> findDeliveryOrderForSchedule(
+            RetailScheduleContext schedule, String retailOrderId);
 
     Map<String, List<RetailDeliveryOrderSummaryDto>> listDeliveryOrdersGroupedBySchedule(
             String supervisorCode, List<String> scheduleIds);

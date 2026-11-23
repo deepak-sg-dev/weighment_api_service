@@ -65,6 +65,8 @@ public class RetailDeliverySqlClient {
     private final RetailOrderLineSqlSupport retailOrderSql;
     private final WeighmentHeaderSqlClient weighmentHeaderSqlClient;
     private final String listRetailOrdersSql;
+    private final String listRetailOrdersScheduleSql;
+    private final String listRetailOrdersScheduleByOrderSql;
     private final String loadRetailOrderByNoSql;
     private final String markArrivedSql;
     private final String completeDeliverySql;
@@ -95,6 +97,26 @@ public class RetailDeliverySqlClient {
                 + """
              ORDER BY rod.order_no DESC
             """;
+        this.listRetailOrdersScheduleSql = retailOrderSql.selectDetailListSqlPrefix(false)
+                + retailOrderSql.selectDelvStatusColumn()
+                + retailOrderSql.selectDelvStartedColumn()
+                + retailOrderSql.selectRetailOtpColumns()
+                + retailOrderSql.selectDeliveryVehicleColumns()
+                + retailOrderSql.selectDetailGpsStubColumns()
+                + retailOrderSql.fromScheduleToDetailJoinWithoutHz()
+                + retailOrderSql.whereLiftingScheduleForRetailRead()
+                + """
+             ORDER BY rod.order_no DESC
+            """;
+        this.listRetailOrdersScheduleByOrderSql = retailOrderSql.selectDetailListSqlPrefix(false)
+                + retailOrderSql.selectDelvStatusColumn()
+                + retailOrderSql.selectDelvStartedColumn()
+                + retailOrderSql.selectRetailOtpColumns()
+                + retailOrderSql.selectDeliveryVehicleColumns()
+                + retailOrderSql.selectDetailGpsStubColumns()
+                + retailOrderSql.fromScheduleToDetailJoinWithoutHz()
+                + retailOrderSql.whereLiftingScheduleForRetailRead()
+                + RetailOrderLineSqlSupport.andDetailOrderNo();
         this.loadRetailOrderByNoSql = retailOrderSql.selectDetailCoreColumns()
                 + retailOrderSql.selectDelvStatusColumn()
                 + retailOrderSql.selectDelvStartedColumn()
@@ -204,11 +226,44 @@ public class RetailDeliverySqlClient {
         }
     }
 
+    /**
+     * Schedule GET / retail order list: lifting→HDR/DTL (no HZ in the join). Shop name, address, and GPS
+     * come from a follow-up HZ lookup without {@code sug_gst_pkg}.
+     */
     public List<RetailDeliveryOrderSummaryDto> listDeliveryOrders(RetailScheduleContext schedule) {
-        return jdbcTemplate.query(
-                listRetailOrdersSql,
+        List<RetailDeliveryOrderSummaryDto> orders = jdbcTemplate.query(
+                listRetailOrdersScheduleSql,
                 (rs, rowNum) -> mapSummary(rs, schedule.getScheduleId()),
                 scheduleReadBindArgs(schedule.getScheduleId()));
+        if (!orders.isEmpty()) {
+            Map<String, List<RetailDeliveryOrderSummaryDto>> grouped = new LinkedHashMap<>();
+            grouped.put(ScheduleIdSupport.normalize(schedule.getScheduleId()), orders);
+            applyHzCustomerProfiles(grouped);
+        }
+        return orders;
+    }
+
+    /** One shop line for delivery DC (no OE/HZ in the main join). */
+    public Optional<RetailDeliveryOrderSummaryDto> findDeliveryOrderForSchedule(
+            RetailScheduleContext schedule, String retailOrderId) {
+        if (retailOrderId == null || retailOrderId.isBlank()) {
+            return Optional.empty();
+        }
+        Object[] scheduleArgs = scheduleReadBindArgs(schedule.getScheduleId());
+        Object[] args = new Object[scheduleArgs.length + 1];
+        System.arraycopy(scheduleArgs, 0, args, 0, scheduleArgs.length);
+        args[scheduleArgs.length] = retailOrderId.trim();
+        List<RetailDeliveryOrderSummaryDto> orders = jdbcTemplate.query(
+                listRetailOrdersScheduleByOrderSql,
+                (rs, rowNum) -> mapSummary(rs, schedule.getScheduleId()),
+                args);
+        if (orders.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, List<RetailDeliveryOrderSummaryDto>> grouped = new LinkedHashMap<>();
+        grouped.put(ScheduleIdSupport.normalize(schedule.getScheduleId()), orders);
+        applyHzCustomerProfiles(grouped);
+        return Optional.of(orders.get(0));
     }
 
     /**

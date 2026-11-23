@@ -29,7 +29,7 @@ public class RetailOrderLineSqlSupport {
 
     /** {@code rod} = detail line, {@code roh} = header, {@code e} = lifting schedule row. */
     public String fromScheduleToDetailJoin() {
-        return fromScheduleToDetailJoin("rod", true, true, true);
+        return fromScheduleToDetailJoin("rod", true, true);
     }
 
     /**
@@ -37,46 +37,40 @@ public class RetailOrderLineSqlSupport {
      * fallback so list does not fan out.
      */
     public String fromScheduleToDetailJoinForList() {
-        return fromScheduleToDetailJoin("rod", true, false, true);
+        return fromScheduleToDetailJoin("rod", true, false);
     }
 
     /**
      * Same lifting→HDR/DTL (and OE/PO when configured) without HZ customer/GPS joins.
      */
     public String fromScheduleToDetailJoinWithoutHz() {
-        return fromScheduleToDetailJoin("rod", false, false, true);
+        return fromScheduleToDetailJoin("rod", false, false);
     }
 
     /**
-     * Mutations / status checks: lifting→HDR/DTL (and OE/PO when configured) without HZ, GPS, GST, or ntail.
+     * Mutations / status checks: lifting→HDR/DTL (and OE/PO when configured) without HZ, GPS, or GST.
      */
     public String fromScheduleToDetailJoinForMutation() {
-        return fromScheduleToDetailJoin("rod", false, false, false);
+        return fromScheduleToDetailJoin("rod", false, false);
     }
 
     /** Same join chain with a custom detail-line alias (for correlated {@code EXISTS} on UPDATE). */
     public String fromScheduleToDetailJoin(String detailAlias) {
-        return fromScheduleToDetailJoin(detailAlias, false, false, false);
+        return fromScheduleToDetailJoin(detailAlias, false, false);
     }
 
     private String fromScheduleToDetailJoin(String detailAlias, boolean includeHzCustomer) {
-        return fromScheduleToDetailJoin(detailAlias, includeHzCustomer, includeHzCustomer, true);
+        return fromScheduleToDetailJoin(detailAlias, includeHzCustomer, includeHzCustomer);
     }
 
     private String fromScheduleToDetailJoin(
-            String detailAlias,
-            boolean includeHzCustomer,
-            boolean includeIndentHzFallback,
-            boolean includeNtail) {
+            String detailAlias, boolean includeHzCustomer, boolean includeIndentHzFallback) {
         String rod = detailAlias == null || detailAlias.isBlank() ? "rod" : detailAlias.trim();
         String dtl = OracleErpColumns.SCHEMA_SUG + "." + OracleErpColumns.RETAIL_ORDER_DTL;
         String apps = OracleErpColumns.SCHEMA_APPS;
         if (erpProperties.isRetailOrderSugTablesLink()) {
             String join = fromScheduleToHeaderJoin()
                     + joinQualifiedTable(dtl, rod + " ON roh.header_id = " + rod + ".header_id\n");
-            if (includeNtail) {
-                join += joinNtailOrderedQty(rod);
-            }
             if (includeHzCustomer) {
                 join += joinOrderedCustomerHzSite(apps, rod);
             }
@@ -84,9 +78,6 @@ public class RetailOrderLineSqlSupport {
         }
         String join = fromScheduleToHeaderJoin()
                 + joinQualifiedTable(dtl, rod + " ON roh.header_id = " + rod + ".header_id");
-        if (includeNtail) {
-            join += joinNtailOrderedQty(rod);
-        }
         if (includeHzCustomer) {
             if (includeIndentHzFallback) {
                 join += joinIndentShipToHzSite(apps);
@@ -94,34 +85,6 @@ public class RetailOrderLineSqlSupport {
             join += joinOrderedCustomerHzSite(apps, rod);
         }
         return join;
-    }
-
-    /**
-     * Ordered kg/birds live on {@code sug_mai_ntail_order} (same {@code order_no}). DTL {@code quantity}/{@code
-     * weight} are delivery scratch values, not the shop order qty.
-     */
-    private static String joinNtailOrderedQty(String detailAlias) {
-        String rod = detailAlias == null || detailAlias.isBlank() ? "rod" : detailAlias.trim();
-        String ntail = OracleErpColumns.SCHEMA_SUG + "." + OracleErpColumns.NTAIL_ORDER;
-        return "\n              LEFT JOIN (\n"
-                + "                SELECT order_no,\n"
-                + "                       TRIM(TO_CHAR(customer_code)) AS customer_code,\n"
-                + "                       MAX(trans_date) AS trans_date\n"
-                + "                  FROM "
-                + ntail
-                + "\n"
-                + "                 GROUP BY order_no, TRIM(TO_CHAR(customer_code))\n"
-                + "              ) n_latest ON n_latest.order_no = "
-                + rod
-                + ".order_no\n"
-                + "               AND n_latest.customer_code = TRIM(TO_CHAR("
-                + rod
-                + ".customer_code))\n"
-                + "              LEFT JOIN "
-                + ntail
-                + " n ON n.order_no = n_latest.order_no\n"
-                + "               AND n.trans_date = n_latest.trans_date\n"
-                + "               AND TRIM(TO_CHAR(n.customer_code)) = n_latest.customer_code\n";
     }
 
     /**
@@ -404,15 +367,15 @@ public class RetailOrderLineSqlSupport {
             TO_CHAR(roh.header_id) AS refid,
                    TO_CHAR(rod.order_no) AS order_no,
                    TO_CHAR(rod.customer_code) AS customer_code,
-                   NVL(rod.quantity, NVL(n.quantity, 0)) AS quantity,
-                   NVL(n.weight, NVL(rod.weight, 0)) AS weight,
+                   NVL(rod.quantity, 0) AS quantity,
+                   NVL(rod.weight, 0) AS weight,
                    rod."""
                 + OracleErpColumns.DELV_QUANTITY
                 + " AS delivered_quantity,\n                   rod."
                 + OracleErpColumns.DELV_WEIGHT
                 + """
                  AS delivered_weight,
-                   n.item_name,
+                   CAST(NULL AS VARCHAR2(240)) AS item_name,
                    rod.uploaded_flag,
                    rod.message,
                    NVL(roh.rt_branch_code, e.branchcode) AS branch_code,
@@ -854,7 +817,7 @@ public class RetailOrderLineSqlSupport {
     }
 
     /**
-     * Per-shop delivery status only (no HZ / GST / ntail). Binds: {@link #whereLiftingScheduleForRetailRead()}.
+     * Per-shop delivery status only (no HZ / GST). Binds: {@link #whereLiftingScheduleForRetailRead()}.
      */
     public String buildAggregateDeliveryStatusSql() {
         return "SELECT NVL(rod."

@@ -1,8 +1,6 @@
 package com.suguna.weighment_api_service.service;
 
-import com.suguna.weighment_api_service.config.OracleErpProperties;
 import com.suguna.weighment_api_service.constants.ErrorCode;
-import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDcDocumentDto;
 import com.suguna.weighment_api_service.constants.ScheduleStatus;
 import com.suguna.weighment_api_service.domain.LiftingSchedule;
 import com.suguna.weighment_api_service.dto.weighment.schedule.MarkScheduleDownloadedRequest;
@@ -19,14 +17,10 @@ import com.suguna.weighment_api_service.exception.BadRequestException;
 import com.suguna.weighment_api_service.exception.ConflictException;
 import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailDto;
-import com.suguna.weighment_api_service.integration.oracle.ScheduleDcAddressSqlClient;
 import com.suguna.weighment_api_service.integration.oracle.ScheduleOtpSqlClient;
 import com.suguna.weighment_api_service.mapper.ScheduleMapper;
-import com.suguna.weighment_api_service.repository.ItemGstRepository;
 import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
-import com.suguna.weighment_api_service.util.DcItemCodeSupport;
-import com.suguna.weighment_api_service.util.RegisteredOfficeAddressSupport;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import com.suguna.weighment_api_service.util.VehicleRegistrationSupport;
 import org.springframework.stereotype.Service;
@@ -40,27 +34,21 @@ public class ScheduleService {
 
     private final ScheduleRepository scheduleRepository;
     private final ScheduleRetailEnrichmentService retailEnrichmentService;
+    private final ScheduleDcDocumentService scheduleDcDocumentService;
     private final ScheduleOtpSqlClient scheduleOtpSqlClient;
     private final ScheduleWorkflowService scheduleWorkflowService;
-    private final ItemGstRepository itemGstRepository;
-    private final ScheduleDcAddressSqlClient scheduleDcAddressSqlClient;
-    private final OracleErpProperties erpProperties;
 
     public ScheduleService(
             ScheduleRepository scheduleRepository,
             ScheduleRetailEnrichmentService retailEnrichmentService,
+            ScheduleDcDocumentService scheduleDcDocumentService,
             ScheduleOtpSqlClient scheduleOtpSqlClient,
-            ScheduleWorkflowService scheduleWorkflowService,
-            ItemGstRepository itemGstRepository,
-            ScheduleDcAddressSqlClient scheduleDcAddressSqlClient,
-            OracleErpProperties erpProperties) {
+            ScheduleWorkflowService scheduleWorkflowService) {
         this.scheduleRepository = scheduleRepository;
         this.retailEnrichmentService = retailEnrichmentService;
+        this.scheduleDcDocumentService = scheduleDcDocumentService;
         this.scheduleOtpSqlClient = scheduleOtpSqlClient;
         this.scheduleWorkflowService = scheduleWorkflowService;
-        this.itemGstRepository = itemGstRepository;
-        this.scheduleDcAddressSqlClient = scheduleDcAddressSqlClient;
-        this.erpProperties = erpProperties;
     }
 
     public ScheduleListResponse getAssignedSchedules(
@@ -146,8 +134,7 @@ public class ScheduleService {
                 supervisor.isDriver()
                         ? scheduleWorkflowService.resolveForDriver()
                         : scheduleWorkflowService.resolveForSaleType(saleType));
-        applyItemGstToDc(detail, schedule);
-        applyDcAddresses(detail, schedule);
+        detail.setDc(scheduleDcDocumentService.getLiftingDc(supervisor, schedule));
         return ScheduleDetailResponse.success(detail);
     }
 
@@ -270,74 +257,6 @@ public class ScheduleService {
             return "PENDING";
         }
         return retailAggregated;
-    }
-
-    private void applyDcAddresses(ScheduleDetailDto detail, LiftingSchedule schedule) {
-        scheduleDcAddressSqlClient
-                .findBranchAddress(schedule.getBranchId(), schedule.getBranchCode())
-                .ifPresent(address -> {
-                    ScheduleMapper.applyBranchAddress(detail.getBranch(), address);
-                    if (address.regionCode() != null) {
-                        ScheduleMapper.applyDcRegionCompany(ensureDc(detail), address.regionCode(), null);
-                    }
-                });
-        scheduleDcAddressSqlClient
-                .findRegisteredOffice(schedule.getBranchId(), schedule.getBranchCode())
-                .map(RegisteredOfficeAddressSupport::parse)
-                .ifPresent(office -> ScheduleMapper.applyRegisteredOffice(ensureDc(detail), office));
-        if (detail.getCustomer() == null || detail.getCustomer().getCode() == null) {
-            return;
-        }
-        scheduleDcAddressSqlClient
-                .findIndentCustomerAddress(detail.getCustomer().getCode(), detail.getCustomer().getLocation())
-                .ifPresent(address -> {
-                    ScheduleMapper.applyCustomerAddress(detail.getCustomer(), address);
-                    if (address.gstNo() == null) {
-                        return;
-                    }
-                    ScheduleDcDocumentDto dc = ensureDc(detail);
-                    if (dc.getTraderGstNo() == null) {
-                        dc.setTraderGstNo(address.gstNo());
-                    }
-                });
-    }
-
-    private static ScheduleDcDocumentDto ensureDc(ScheduleDetailDto detail) {
-        ScheduleDcDocumentDto dc = detail.getDc();
-        if (dc == null) {
-            dc = ScheduleDcDocumentDto.empty();
-            detail.setDc(dc);
-        }
-        return dc;
-    }
-
-    private void applyItemGstToDc(ScheduleDetailDto detail, LiftingSchedule schedule) {
-        String itemCode = DcItemCodeSupport.resolveSegment1(schedule, erpProperties);
-        Long organizationId = DcItemCodeSupport.parseOrganizationId(schedule.getBranchId());
-        String breed = firstNonBlank(schedule.getProductName(), schedule.getOperationType());
-        itemGstRepository
-                .find(itemCode, organizationId, schedule.getBranchCode(), breed)
-                .ifPresent(info -> {
-                    ScheduleDcDocumentDto dc = ensureDc(detail);
-                    if (info.hsnCode() != null) {
-                        dc.setHsnCode(info.hsnCode());
-                    }
-                    if (info.taxCode() != null) {
-                        dc.setTaxCode(info.taxCode());
-                    }
-                });
-    }
-
-    private static String firstNonBlank(String... values) {
-        if (values == null) {
-            return null;
-        }
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value.trim();
-            }
-        }
-        return null;
     }
 
     private static boolean liftingAllowsRetailDeliveryProgress(LiftingSchedule schedule) {

@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Optional DC (delivery challan) print fields for GET schedule details. Values are null until ERP/admin
+ * Optional DC (delivery challan) print fields for lifting/delivery DC APIs. Values may be null until ERP
  * supplies them; clients should only use a field when it is present.
  */
 @Getter

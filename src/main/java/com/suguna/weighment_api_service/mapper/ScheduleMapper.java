@@ -136,7 +136,6 @@ public final class ScheduleMapper {
         detail.setCustomer(toCustomer(schedule));
         detail.setRules(rules);
         detail.setDeliveries(safeDeliveries);
-        detail.setDc(toDcDocument(schedule));
         return detail;
     }
 
@@ -209,7 +208,7 @@ public final class ScheduleMapper {
         };
     }
 
-    static String formatOptionalInstant(Instant instant) {
+    public static String formatOptionalInstant(Instant instant) {
         if (instant == null) {
             return null;
         }
@@ -220,12 +219,12 @@ public final class ScheduleMapper {
      * DC print payload. Only {@code breedStrain} is filled from current lifting row when product/bird type exists;
      * remaining keys stay null until ERP/admin is wired.
      */
-    static ScheduleDcDocumentDto toDcDocument(LiftingSchedule schedule) {
+    public static ScheduleDcDocumentDto toDcDocument(LiftingSchedule schedule) {
         String breed = firstNonBlank(schedule.getProductName(), mapBirdType(schedule));
         return ScheduleDcDocumentDto.builder().breedStrain(blankToNull(breed)).build();
     }
 
-    static ScheduleCustomerDto toCustomer(LiftingSchedule schedule) {
+    public static ScheduleCustomerDto toCustomer(LiftingSchedule schedule) {
         return ScheduleCustomerDto.builder()
                 .code(blankToNull(schedule.getTraderId()))
                 .name(blankToNull(schedule.getTraderName()))
@@ -243,6 +242,10 @@ public final class ScheduleMapper {
         branch.setPostalCode(address.postalCode());
         branch.setState(address.state());
         branch.setGstNo(address.gstNo());
+        if ((branch.getName() == null || branch.getName().isBlank()) && address.branchName() != null) {
+            branch.setName(address.branchName());
+            branch.setShortName(BranchNameSupport.deriveShortName(address.branchName()));
+        }
     }
 
     public static void applyRegisteredOffice(
@@ -293,7 +296,7 @@ public final class ScheduleMapper {
         customer.setGstNo(address.gstNo());
     }
 
-    static ScheduleFarmSummaryDto toFarmSummary(LiftingSchedule schedule) {
+    public static ScheduleFarmSummaryDto toFarmSummary(LiftingSchedule schedule) {
         ScheduleFarmSummaryDto farm = new ScheduleFarmSummaryDto();
         farm.setId(schedule.getFarmId());
         farm.setName(schedule.getFarmName());
@@ -306,8 +309,9 @@ public final class ScheduleMapper {
         return farm;
     }
 
-    static ScheduleBranchDto toBranch(LiftingSchedule schedule, SupervisorProfile supervisor) {
-        String fullName = supervisor.getBranchName();
+    public static ScheduleBranchDto toBranch(LiftingSchedule schedule, SupervisorProfile supervisor) {
+        String fullName = firstNonBlank(
+                schedule.getBranchName(), supervisor == null ? null : supervisor.getBranchName());
         ScheduleBranchDto branch = new ScheduleBranchDto();
         branch.setId(resolveBranchId(schedule, supervisor));
         branch.setCode(schedule.getBranchCode());
@@ -320,7 +324,7 @@ public final class ScheduleMapper {
         if (schedule.getBranchId() != null && !schedule.getBranchId().isBlank()) {
             return schedule.getBranchId().trim();
         }
-        if (supervisor.getBranchId() != null && !supervisor.getBranchId().isBlank()) {
+        if (supervisor != null && supervisor.getBranchId() != null && !supervisor.getBranchId().isBlank()) {
             return supervisor.getBranchId().trim();
         }
         return schedule.getBranchCode();
@@ -330,7 +334,7 @@ public final class ScheduleMapper {
         return BirdTypeNormalizer.fromOrderType(schedule.getOperationType());
     }
 
-    static String formatScheduledAt(Instant instant) {
+    public static String formatScheduledAt(Instant instant) {
         Instant value = instant == null ? Instant.now() : instant;
         return value.atZone(INDIA).format(SCHEDULED_AT);
     }

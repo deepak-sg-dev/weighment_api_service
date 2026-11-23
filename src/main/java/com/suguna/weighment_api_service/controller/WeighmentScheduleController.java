@@ -8,10 +8,12 @@ import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleActionRes
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleDetailResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.ScheduleListResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.StartScheduleRequest;
+import com.suguna.weighment_api_service.dto.weighment.schedule.WeighmentDcResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.UpdateScheduleVehicleRequest;
 import com.suguna.weighment_api_service.dto.weighment.schedule.UpdateScheduleVehicleResponse;
 import com.suguna.weighment_api_service.dto.weighment.schedule.VehiclePhotoUploadResponse;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
+import com.suguna.weighment_api_service.service.ScheduleDcDocumentService;
 import com.suguna.weighment_api_service.service.ScheduleOtpService;
 import com.suguna.weighment_api_service.service.ScheduleService;
 import com.suguna.weighment_api_service.service.ScheduleVehicleService;
@@ -40,16 +42,19 @@ import org.springframework.web.multipart.MultipartFile;
 public class WeighmentScheduleController {
 
     private final ScheduleService scheduleService;
+    private final ScheduleDcDocumentService scheduleDcDocumentService;
     private final ScheduleOtpService scheduleOtpService;
     private final WeighmentVehiclePhotoService vehiclePhotoService;
     private final ScheduleVehicleService scheduleVehicleService;
 
     public WeighmentScheduleController(
             ScheduleService scheduleService,
+            ScheduleDcDocumentService scheduleDcDocumentService,
             ScheduleOtpService scheduleOtpService,
             WeighmentVehiclePhotoService vehiclePhotoService,
             ScheduleVehicleService scheduleVehicleService) {
         this.scheduleService = scheduleService;
+        this.scheduleDcDocumentService = scheduleDcDocumentService;
         this.scheduleOtpService = scheduleOtpService;
         this.vehiclePhotoService = vehiclePhotoService;
         this.scheduleVehicleService = scheduleVehicleService;
@@ -78,6 +83,21 @@ public class WeighmentScheduleController {
             @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
             @PathVariable String scheduleId) {
         return ResponseEntity.ok(scheduleService.getScheduleDetails(supervisor, scheduleId));
+    }
+
+    /** Use for composite schedule ids (e.g. {@code 211342644/1.1}). */
+    @GetMapping("/dc")
+    public ResponseEntity<WeighmentDcResponse> getLiftingDcByQuery(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @RequestParam String scheduleId) {
+        return ResponseEntity.ok(scheduleDcDocumentService.getLiftingDc(supervisor, scheduleId));
+    }
+
+    @GetMapping("/{scheduleId}/dc")
+    public ResponseEntity<WeighmentDcResponse> getLiftingDc(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @PathVariable String scheduleId) {
+        return ResponseEntity.ok(scheduleDcDocumentService.getLiftingDc(supervisor, scheduleId));
     }
 
     @PostMapping("/download")

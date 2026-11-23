@@ -6,7 +6,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Parses and updates {@code sug_mai_ntail_order.message} for retail delivery weighment v1. */
+/** Parses and updates DTL {@code message} for retail delivery weighment v1. */
 final class DeliveryOrderMessageSupport {
 
     static final String PREFIX = "DW_V1|";

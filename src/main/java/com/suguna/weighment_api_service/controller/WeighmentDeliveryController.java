@@ -6,8 +6,10 @@ import com.suguna.weighment_api_service.dto.delivery.StartRetailDeliveryOrderReq
 import com.suguna.weighment_api_service.dto.delivery.StartRetailDeliveryOrderResponse;
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentRequest;
 import com.suguna.weighment_api_service.dto.delivery.SubmitDeliveryWeighmentResponse;
+import com.suguna.weighment_api_service.dto.weighment.schedule.WeighmentDcResponse;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.service.DeliveryWeighmentService;
+import com.suguna.weighment_api_service.service.ScheduleDcDocumentService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.time.Instant;
@@ -15,6 +17,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,9 +32,29 @@ import org.springframework.web.multipart.MultipartFile;
 public class WeighmentDeliveryController {
 
     private final DeliveryWeighmentService deliveryWeighmentService;
+    private final ScheduleDcDocumentService scheduleDcDocumentService;
 
-    public WeighmentDeliveryController(DeliveryWeighmentService deliveryWeighmentService) {
+    public WeighmentDeliveryController(
+            DeliveryWeighmentService deliveryWeighmentService,
+            ScheduleDcDocumentService scheduleDcDocumentService) {
         this.deliveryWeighmentService = deliveryWeighmentService;
+        this.scheduleDcDocumentService = scheduleDcDocumentService;
+    }
+
+    @GetMapping("/dc")
+    public ResponseEntity<WeighmentDcResponse> getDeliveryDcByQuery(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @RequestParam String scheduleId,
+            @RequestParam String orderId) {
+        return ResponseEntity.ok(scheduleDcDocumentService.getDeliveryDc(supervisor, scheduleId, orderId));
+    }
+
+    @GetMapping("/{orderId}/dc")
+    public ResponseEntity<WeighmentDcResponse> getDeliveryDc(
+            @AuthenticationPrincipal AuthenticatedSupervisor supervisor,
+            @PathVariable String orderId,
+            @RequestParam String scheduleId) {
+        return ResponseEntity.ok(scheduleDcDocumentService.getDeliveryDc(supervisor, scheduleId, orderId));
     }
 
     @PostMapping("/{orderId}/start")

@@ -5,7 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 
-/** RETAIL lifting schedule header used to scope {@code sug_mai_ntail_order} lines. */
+/** RETAIL lifting schedule header used to scope retail order DTL lines. */
 @Getter
 @Builder
 @AllArgsConstructor

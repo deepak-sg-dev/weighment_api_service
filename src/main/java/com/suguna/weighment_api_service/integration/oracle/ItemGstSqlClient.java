@@ -1,6 +1,8 @@
 package com.suguna.weighment_api_service.integration.oracle;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -8,72 +10,58 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * Item GST attributes for DC print via {@code sug_gst_pkg.get_item_info} on {@code mtl_system_items_b}.
+ * Item GST attributes for DC print via {@code sug_gst_pkg.get_item_info}.
+ *
+ * <p>Resolve {@code inventory_item_id} first, then call the GST package once for that row. Never use
+ * {@code get_item_info} in a WHERE/ORDER BY over {@code mtl_system_items_b} (that can run for a minute).
  */
 @Component
 public class ItemGstSqlClient {
 
     private static final Logger log = LoggerFactory.getLogger(ItemGstSqlClient.class);
 
-    private static final String GST_HSN =
-            "sug_gst_pkg.get_item_info('HSN', a.inventory_item_id, a.organization_id)";
-    private static final String GST_TAX =
-            "sug_gst_pkg.get_item_info('TAXCODE', a.inventory_item_id, a.organization_id)";
-
-    private static final String BY_ORGANIZATION_SQL =
+    private static final String RESOLVE_BY_ORGANIZATION_SQL =
             """
-            SELECT %s AS hsn,
-                   %s AS tax_code
+            SELECT a.inventory_item_id, a.organization_id
               FROM mtl_system_items_b a
              WHERE TRIM(a.segment1) = TRIM(?)
                AND a.organization_id = ?
                AND ROWNUM = 1
-            """
-                    .formatted(GST_HSN, GST_TAX);
+            """;
 
-    private static final String BY_BRANCH_CODE_SQL =
+    private static final String RESOLVE_BY_BRANCH_SQL =
             """
-            SELECT %s AS hsn,
-                   %s AS tax_code
-              FROM mtl_system_items_b a,
-                   sug_organization_mv d
-             WHERE d.branch_id = a.organization_id
-               AND TRIM(a.segment1) = TRIM(?)
+            SELECT a.inventory_item_id, a.organization_id
+              FROM mtl_system_items_b a
+              JOIN sug_organization_mv d ON d.branch_id = a.organization_id
+             WHERE TRIM(a.segment1) = TRIM(?)
                AND TRIM(d.branch_code) = TRIM(?)
                AND ROWNUM = 1
-            """
-                    .formatted(GST_HSN, GST_TAX);
+            """;
 
-    /**
-     * When preferred segment1 is missing (broiler strain names are not MTL codes), pick a live-bird item
-     * at the branch that already has HSN.
-     */
-    private static final String BY_BRANCH_LIVE_BIRD_SQL =
+    private static final String RESOLVE_BR_PREFIX_BY_BRANCH_SQL =
             """
-            SELECT * FROM (
-              SELECT %s AS hsn,
-                     %s AS tax_code
-                FROM mtl_system_items_b a,
-                     sug_organization_mv d
-               WHERE d.branch_id = a.organization_id
-                 AND TRIM(d.branch_code) = TRIM(?)
-                 AND (
-                      UPPER(TRIM(a.segment1)) LIKE 'BR%%'
-                      OR UPPER(NVL(a.description, 'X')) LIKE '%%BROILER%%'
-                      OR UPPER(NVL(a.description, 'X')) LIKE '%%CULL%%'
-                      OR (? IS NOT NULL AND UPPER(NVL(a.description, 'X')) LIKE '%%' || UPPER(?) || '%%')
-                     )
-                 AND %s IS NOT NULL
-               ORDER BY CASE
-                            WHEN UPPER(TRIM(a.segment1)) LIKE 'BR%%' THEN 0
-                            ELSE 1
-                        END,
-                        a.segment1
-            ) WHERE ROWNUM = 1
+            SELECT inventory_item_id, organization_id
+              FROM (
+                SELECT a.inventory_item_id, a.organization_id
+                  FROM mtl_system_items_b a
+                  JOIN sug_organization_mv d ON d.branch_id = a.organization_id
+                 WHERE TRIM(d.branch_code) = TRIM(?)
+                   AND UPPER(TRIM(a.segment1)) LIKE 'BR%'
+                 ORDER BY a.segment1
+              )
+             WHERE ROWNUM = 1
+            """;
+
+    private static final String ITEM_INFO_SQL =
             """
-                    .formatted(GST_HSN, GST_TAX, GST_HSN);
+            SELECT sug_gst_pkg.get_item_info('HSN', ?, ?) AS hsn,
+                   sug_gst_pkg.get_item_info('TAXCODE', ?, ?) AS tax_code
+              FROM dual
+            """;
 
     private final JdbcTemplate jdbcTemplate;
+    private final ConcurrentHashMap<String, Optional<ItemGstInfo>> cache = new ConcurrentHashMap<>();
 
     public ItemGstSqlClient(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
@@ -87,29 +75,45 @@ public class ItemGstSqlClient {
             String itemSegment1, Long organizationId, String branchCode, String breedOrDescription) {
         String item = blankToNull(itemSegment1);
         String branch = blankToNull(branchCode);
-        String breed = blankToNull(breedOrDescription);
-        if (item != null && organizationId != null) {
-            Optional<ItemGstInfo> byOrg = query(BY_ORGANIZATION_SQL, item, organizationId);
-            if (byOrg.isPresent()) {
-                return byOrg;
-            }
-        }
-        if (item != null && branch != null) {
-            Optional<ItemGstInfo> byBranch = query(BY_BRANCH_CODE_SQL, item, branch);
-            if (byBranch.isPresent()) {
-                return byBranch;
-            }
-        }
-        if (branch != null) {
-            return query(BY_BRANCH_LIVE_BIRD_SQL, branch, breed, breed);
-        }
-        return Optional.empty();
+        String cacheKey = (item == null ? "" : item)
+                + "|"
+                + (organizationId == null ? "" : organizationId)
+                + "|"
+                + (branch == null ? "" : branch);
+        return cache.computeIfAbsent(cacheKey, key -> lookup(item, organizationId, branch));
     }
 
-    private Optional<ItemGstInfo> query(String sql, Object... args) {
+    private Optional<ItemGstInfo> lookup(String item, Long organizationId, String branch) {
+        Optional<ItemKey> resolved = Optional.empty();
+        if (item != null && organizationId != null) {
+            resolved = resolveItem(RESOLVE_BY_ORGANIZATION_SQL, item, organizationId);
+        }
+        if (resolved.isEmpty() && item != null && branch != null) {
+            resolved = resolveItem(RESOLVE_BY_BRANCH_SQL, item, branch);
+        }
+        if (resolved.isEmpty() && branch != null) {
+            resolved = resolveItem(RESOLVE_BR_PREFIX_BY_BRANCH_SQL, branch);
+        }
+        return resolved.flatMap(this::queryItemInfo);
+    }
+
+    private Optional<ItemKey> resolveItem(String sql, Object... args) {
+        try {
+            List<ItemKey> rows = jdbcTemplate.query(
+                    sql,
+                    (rs, rowNum) -> new ItemKey(rs.getLong("inventory_item_id"), rs.getLong("organization_id")),
+                    args);
+            return rows.stream().findFirst();
+        } catch (DataAccessException ex) {
+            log.warn("MTL item resolve failed: {}", ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Optional<ItemGstInfo> queryItemInfo(ItemKey item) {
         try {
             ItemGstInfo row = jdbcTemplate.query(
-                    sql,
+                    ITEM_INFO_SQL,
                     rs -> {
                         if (!rs.next()) {
                             return null;
@@ -117,7 +121,10 @@ public class ItemGstSqlClient {
                         return new ItemGstInfo(
                                 blankToNull(rs.getString("hsn")), blankToNull(rs.getString("tax_code")));
                     },
-                    args);
+                    item.inventoryItemId(),
+                    item.organizationId(),
+                    item.inventoryItemId(),
+                    item.organizationId());
             if (row == null || (row.hsnCode() == null && row.taxCode() == null)) {
                 return Optional.empty();
             }
@@ -131,6 +138,8 @@ public class ItemGstSqlClient {
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
+
+    private record ItemKey(long inventoryItemId, long organizationId) {}
 
     public record ItemGstInfo(String hsnCode, String taxCode) {}
 }

@@ -28,8 +28,8 @@ public class ScheduleDetailDto {
     private List<ScheduleDeliveryDto> deliveries;
     private ScheduleOtpDetailDto otp;
     private ScheduleWorkflowDto workflow;
-    /** Optional DC print fields (slip, HSN, GST, bank, etc.). Keys are always present; values may be null. */
-    private ScheduleDcDocumentDto dc;
+    /** Lifting DC (same payload as {@code GET /weighment/schedules/{id}/dc}). */
+    private WeighmentDcResponse dc;
 
     public ScheduleDetailDto() {}
 
@@ -217,11 +217,11 @@ public class ScheduleDetailDto {
         this.workflow = workflow;
     }
 
-    public ScheduleDcDocumentDto getDc() {
+    public WeighmentDcResponse getDc() {
         return dc;
     }
 
-    public void setDc(ScheduleDcDocumentDto dc) {
+    public void setDc(WeighmentDcResponse dc) {
         this.dc = dc;
     }
 }

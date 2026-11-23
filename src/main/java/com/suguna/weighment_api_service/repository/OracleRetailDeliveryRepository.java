@@ -15,6 +15,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Repository
 public class OracleRetailDeliveryRepository implements RetailDeliveryRepository {
@@ -33,6 +34,12 @@ public class OracleRetailDeliveryRepository implements RetailDeliveryRepository 
     @Override
     public List<RetailDeliveryOrderSummaryDto> listDeliveryOrders(RetailScheduleContext schedule) {
         return retailDeliverySqlClient.listDeliveryOrders(schedule);
+    }
+
+    @Override
+    public Optional<RetailDeliveryOrderSummaryDto> findDeliveryOrderForSchedule(
+            RetailScheduleContext schedule, String retailOrderId) {
+        return retailDeliverySqlClient.findDeliveryOrderForSchedule(schedule, retailOrderId);
     }
 
     @Override

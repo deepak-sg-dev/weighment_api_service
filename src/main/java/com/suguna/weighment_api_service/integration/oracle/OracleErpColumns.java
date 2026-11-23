@@ -8,7 +8,6 @@ public final class OracleErpColumns {
 
     public static final String RETAIL_ORDER_HDR = "SUG_MAI_RETAIL_ORDER_HDR";
     public static final String RETAIL_ORDER_DTL = "SUG_MAI_RETAIL_ORDER_DTL";
-    public static final String NTAIL_ORDER = "SUG_MAI_NTAIL_ORDER";
     public static final String RETAIL_HDR_LIFTING_MATCH = "REQ_HEADER_ID";
 
     public static final String RETAIL_OTP = "RETAIL_OTP";

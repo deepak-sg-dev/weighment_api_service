@@ -119,6 +119,37 @@ public class TransactionSqlClient {
              FETCH FIRST 1 ROW ONLY
             """;
 
+    private static final String DELIVERY_HEADER_SQL =
+            """
+            SELECT w.trans_id,
+                   w.status,
+                   w.updated_date,
+                   w.bird_type,
+                   w.ordered_qty,
+                   w.no_of_birds,
+                   w.no_of_cages,
+                   w.empty_wt,
+                   w.gross_wt,
+                   w.net_wt,
+                   w.avg_wt,
+                   w.latitude,
+                   w.longitude,
+                   w.vehicle_no,
+                   w.scale_no,
+                   w.wm_start_time,
+                   w.wm_end_time,
+                   w.vehicle_outtime,
+                   w.bird_stock_nos,
+                   w.feed_stock_bags
+              FROM sug_mai_birds_weighment w
+             WHERE (TO_CHAR(w.schedule_no) = TRIM(?)
+                    OR TO_CHAR(w.schedule_no) = REGEXP_SUBSTR(TRIM(?), '^[^/]+'))
+               AND TRIM(w.order_number) = TRIM(?)
+               AND UPPER(TRIM(w.source)) = 'DELIVERY'
+             ORDER BY w.trans_id DESC
+             FETCH FIRST 1 ROW ONLY
+            """;
+
     private static final String RETRY_SQL =
             """
             UPDATE sug_mai_birds_weighment w
@@ -181,30 +212,46 @@ public class TransactionSqlClient {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         List<SubmissionHeaderSnapshot> rows = jdbcTemplate.query(
                 SUBMISSION_HEADER_SQL,
-                (rs, rowNum) -> new SubmissionHeaderSnapshot(
-                        rs.getLong("trans_id"),
-                        rs.getString("status"),
-                        rs.getTimestamp("updated_date"),
-                        rs.getString("bird_type"),
-                        getDouble(rs, "ordered_qty"),
-                        getInteger(rs, "no_of_birds"),
-                        getInteger(rs, "no_of_cages"),
-                        getDouble(rs, "empty_wt"),
-                        getDouble(rs, "gross_wt"),
-                        getDouble(rs, "net_wt"),
-                        getDouble(rs, "avg_wt"),
-                        getDouble(rs, "latitude"),
-                        getDouble(rs, "longitude"),
-                        rs.getString("vehicle_no"),
-                        rs.getString("scale_no"),
-                        rs.getTimestamp("wm_start_time"),
-                        rs.getTimestamp("wm_end_time"),
-                        rs.getTimestamp("vehicle_outtime"),
-                        getInteger(rs, "bird_stock_nos"),
-                        getDouble(rs, "feed_stock_bags")),
+                (rs, rowNum) -> mapSubmissionHeader(rs),
                 normalizedScheduleId,
                 normalizedScheduleId);
         return rows.stream().findFirst();
+    }
+
+    public Optional<SubmissionHeaderSnapshot> findDeliverySubmissionHeader(String scheduleId, String retailOrderNo) {
+        String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
+        String orderNo = retailOrderNo == null ? "" : retailOrderNo.trim();
+        List<SubmissionHeaderSnapshot> rows = jdbcTemplate.query(
+                DELIVERY_HEADER_SQL,
+                (rs, rowNum) -> mapSubmissionHeader(rs),
+                normalizedScheduleId,
+                normalizedScheduleId,
+                orderNo);
+        return rows.stream().findFirst();
+    }
+
+    private static SubmissionHeaderSnapshot mapSubmissionHeader(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new SubmissionHeaderSnapshot(
+                rs.getLong("trans_id"),
+                rs.getString("status"),
+                rs.getTimestamp("updated_date"),
+                rs.getString("bird_type"),
+                getDouble(rs, "ordered_qty"),
+                getInteger(rs, "no_of_birds"),
+                getInteger(rs, "no_of_cages"),
+                getDouble(rs, "empty_wt"),
+                getDouble(rs, "gross_wt"),
+                getDouble(rs, "net_wt"),
+                getDouble(rs, "avg_wt"),
+                getDouble(rs, "latitude"),
+                getDouble(rs, "longitude"),
+                rs.getString("vehicle_no"),
+                rs.getString("scale_no"),
+                rs.getTimestamp("wm_start_time"),
+                rs.getTimestamp("wm_end_time"),
+                rs.getTimestamp("vehicle_outtime"),
+                getInteger(rs, "bird_stock_nos"),
+                getDouble(rs, "feed_stock_bags"));
     }
 
     public static String formatInstantPublic(Timestamp timestamp) {

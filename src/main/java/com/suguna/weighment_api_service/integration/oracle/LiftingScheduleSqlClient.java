@@ -228,7 +228,27 @@ public class LiftingScheduleSqlClient {
                 ON f.farm_code = TRIM(o.farmercode)
             """;
 
-    /** GPS view is expensive; list/start/download skip it. */
+    /**
+     * One org row per {@code branch_id} (avoids a correlated {@code branch_name} subquery per schedule).
+     */
+    private static final String BRANCH_ORG_JOIN =
+            """
+              LEFT JOIN (
+                SELECT branch_id, TRIM(branch_name) AS branch_name
+                  FROM (
+                    SELECT org.branch_id,
+                           org.branch_name,
+                           ROW_NUMBER() OVER (PARTITION BY org.branch_id ORDER BY org.branch_id) AS rn
+                      FROM sug_organization_mv org
+                     WHERE org.branch_id IS NOT NULL
+                  )
+                 WHERE rn = 1
+              ) org ON TO_CHAR(org.branch_id) = TRIM(TO_CHAR(o.branchid))
+            """;
+
+    /**
+     * GPS view is expensive on list; GET details uses it only as fallback when farm-header coords are empty.
+     */
     private static final String FARM_GPS_JOIN =
             """
               LEFT JOIN sug_farm_lifting_gps_v v
@@ -250,6 +270,7 @@ public class LiftingScheduleSqlClient {
                    o.order_request_date,
                    o.branchcode AS branch_code,
                    TO_CHAR(o.branchid) AS branch_id,
+                   TRIM(org.branch_name) AS branch_name,
                    o.ordernumber AS sales_order_no,
                    NVL(o.body_wt, 0) AS body_wt,
             """
@@ -268,7 +289,8 @@ public class LiftingScheduleSqlClient {
                    f.longitude AS farm_longitude
               FROM sug_mai_birds_lifting_order o
             """
-                + FARM_HEADER_JOIN;
+                + FARM_HEADER_JOIN
+                + BRANCH_ORG_JOIN;
     }
 
     private String buildDetailSchedulesSelect() {
@@ -285,6 +307,7 @@ public class LiftingScheduleSqlClient {
                    o.order_request_date,
                    o.branchcode AS branch_code,
                    TO_CHAR(o.branchid) AS branch_id,
+                   TRIM(org.branch_name) AS branch_name,
                    o.ordernumber AS sales_order_no,
                    NVL(o.body_wt, 0) AS body_wt,
             """
@@ -299,8 +322,8 @@ public class LiftingScheduleSqlClient {
                 + MOBILE_STATUS_COLUMNS
                 + """
                    ,
-                   NVL(v.farm_mst_latitude, 0) AS farm_latitude,
-                   NVL(v.farm_mst_longitude, 0) AS farm_longitude,
+                   NVL(NULLIF(f.latitude, 0), v.farm_mst_latitude) AS farm_latitude,
+                   NVL(NULLIF(f.longitude, 0), v.farm_mst_longitude) AS farm_longitude,
                    NVL(o.tolerancepercent, 0) AS tolerance_percent,
                    NVL(o.avg_wt_low, 0) AS tolerance_min,
                    NVL(o.avg_wt_high, 0) AS tolerance_max,
@@ -315,6 +338,7 @@ public class LiftingScheduleSqlClient {
               FROM sug_mai_birds_lifting_order o
             """
                 + FARM_HEADER_JOIN
+                + BRANCH_ORG_JOIN
                 + FARM_GPS_JOIN;
     }
 
@@ -862,6 +886,7 @@ public class LiftingScheduleSqlClient {
         schedule.setDeclaredBodyWeightKg(rs.getDouble("body_wt"));
         schedule.setBranchCode(rs.getString("branch_code"));
         schedule.setBranchId(rs.getString("branch_id"));
+        schedule.setBranchName(rs.getString("branch_name"));
         schedule.setSalesOrderNo(readLongObject(rs, "sales_order_no"));
         String vehicleNo = rs.getString("vehicle_no");
         String driverName = rs.getString("driver_name");

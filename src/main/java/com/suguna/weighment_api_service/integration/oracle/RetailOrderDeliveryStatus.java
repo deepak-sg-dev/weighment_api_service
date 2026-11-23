@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.Locale;
 
-/** Maps {@code sug_mai_ntail_order} columns to mobile delivery row / schedule aggregate status. */
+/** Maps retail DTL delivery columns to mobile delivery row / schedule aggregate status. */
 public final class RetailOrderDeliveryStatus {
 
     static final String COMPLETED = "COMPLETED";
@@ -85,7 +85,7 @@ public final class RetailOrderDeliveryStatus {
         return isDeliveryStarted(message, deliveryStartedAt);
     }
 
-    /** True when the shop delivery workflow is finished (not ERP ntail upload-only). */
+    /** True when the shop delivery workflow is finished (not ERP upload-only). */
     public static boolean isDeliveryComplete(String uploadedFlag, String message) {
         if (message == null || message.isBlank()) {
             return false;

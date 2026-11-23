@@ -15,7 +15,8 @@ class RetailOrderLineSqlSyntaxTest {
         RetailOrderLineSqlSupport sql = new RetailOrderLineSqlSupport(props);
         String from = sql.fromScheduleToDetailJoin().replaceAll("\\s+", " ").toUpperCase();
         assertFalse(from.contains("ON N.TRANS_DATE = ( SELECT"), from);
-        assertTrue(from.contains("N_LATEST"), from);
+        assertFalse(from.contains("SUG_MAI_NTAIL_ORDER"), from);
+        assertFalse(from.contains("N_LATEST"), from);
         String exists = sql.existsDetailLinkedToSchedule().replaceAll("\\s+", " ").toUpperCase();
         assertFalse(exists.contains("HZ_"), exists);
         assertFalse(exists.contains("NTAIL"), exists);
@@ -90,7 +91,7 @@ class RetailOrderLineSqlSyntaxTest {
                 .replaceAll("\\s+", " ")
                 .trim();
         int selectCount = select.split("(?i)\\bSELECT\\b", -1).length - 1;
-        assertTrue(selectCount == 2, select);
+        assertTrue(selectCount == 1, select);
         assertTrue(select.startsWith("SELECT "), select);
         assertTrue(select.contains(" lifting_schedule_id,"), select);
         assertTrue(select.contains(" FROM sug_mai_birds_lifting_order "), select);
@@ -133,9 +134,9 @@ class RetailOrderLineSqlSyntaxTest {
         assertFalse(from.contains("HZ_"), from);
         assertTrue(from.contains("OE_ORDER_LINES_ALL"), from);
         assertTrue(from.contains("SUG_MAI_RETAIL_ORDER_DTL"), from);
-        assertTrue(from.contains("SUG_MAI_NTAIL_ORDER"), from);
+        assertFalse(from.contains("SUG_MAI_NTAIL_ORDER"), from);
         String select = sql.selectDetailListSqlPrefix(false).replaceAll("\\s+", " ").toUpperCase();
-        assertTrue(select.contains("NVL(N.WEIGHT, NVL(ROD.WEIGHT, 0))"), select);
+        assertTrue(select.contains("NVL(ROD.WEIGHT, 0)"), select);
         assertTrue(select.contains("DELIVERED_QUANTITY"), select);
         assertTrue(select.contains("DELIVERED_WEIGHT"), select);
         assertFalse(select.contains("HP_ORD"), select);

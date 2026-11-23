@@ -14,6 +14,8 @@ public class LiftingSchedule {
     private double declaredBodyWeightKg;
     private String branchCode;
     private String branchId;
+    /** {@code sug_organization_mv.branch_name} for the lifting branch. */
+    private String branchName;
     private Long salesOrderNo;
     private String vehicleNumber;
     private String driverName;
@@ -113,6 +115,14 @@ public class LiftingSchedule {
 
     public void setBranchId(String branchId) {
         this.branchId = branchId;
+    }
+
+    public String getBranchName() {
+        return branchName;
+    }
+
+    public void setBranchName(String branchName) {
+        this.branchName = branchName;
     }
 
     public Long getSalesOrderNo() {
