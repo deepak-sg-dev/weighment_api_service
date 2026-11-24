@@ -32,8 +32,8 @@ public class AppUser {
     @Column(name = "PASS_WORD")
     private String password;
 
-    @Column(name = "BRANCH_ID")
-    private String  branchId;
+    @Transient
+    private String branchId;
 
     @Column(name = "NAME")
     private String name;
