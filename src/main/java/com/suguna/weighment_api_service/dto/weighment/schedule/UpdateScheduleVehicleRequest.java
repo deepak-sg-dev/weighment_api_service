@@ -55,6 +55,10 @@ public class UpdateScheduleVehicleRequest {
         @Pattern(regexp = "^[6-9][0-9]{9}$", message = "driver mobile must be 10 digits starting with 6-9")
         private String driverMobile;
 
+        /** ERP {@code P} / {@code S}. JSON may send {@code P}, {@code S}, {@code PRIMARY}, or {@code SECONDARY}. */
+        @Size(max = 16)
+        private String vehicleType;
+
         @JsonGetter("number")
         public String getNumber() {
             return number;

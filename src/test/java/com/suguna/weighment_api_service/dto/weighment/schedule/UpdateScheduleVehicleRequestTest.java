@@ -25,9 +25,10 @@ class UpdateScheduleVehicleRequestTest {
         UpdateScheduleVehicleRequest request = mapper.readValue(
                 """
                 {"deviceId":"DEV1","vehicle":{"number":"tn 09 ab 1234",
-                "driverName":"Murugan","driverMobile":"9568845752"}}
+                "driverName":"Murugan","driverMobile":"9568845752","vehicleType":"P"}}
                 """,
                 UpdateScheduleVehicleRequest.class);
         assertEquals("TN09AB1234", request.getVehicle().getNumber());
+        assertEquals("P", request.getVehicle().getVehicleType());
     }
 }

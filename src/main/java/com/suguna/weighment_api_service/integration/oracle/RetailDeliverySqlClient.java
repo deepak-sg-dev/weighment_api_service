@@ -485,8 +485,7 @@ public class RetailDeliverySqlClient {
                 row.retailOtp(),
                 row.retailOtpExpiresAt(),
                 row.message(),
-                Instant.now(),
-                erpProperties.getRetailOtpStubCode());
+                Instant.now());
     }
 
     public boolean isRetailerOtpVerified(RetailScheduleContext schedule, String retailOrderId) {

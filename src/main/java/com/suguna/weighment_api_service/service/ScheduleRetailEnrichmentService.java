@@ -243,8 +243,7 @@ public class ScheduleRetailEnrichmentService {
                 order.getRetailOtp(),
                 order.getRetailOtpExpiresAt(),
                 order.getMessage(),
-                Instant.now(),
-                erpProperties.getRetailOtpStubCode());
+                Instant.now());
         otp.setOtp(resolution.configured() && !resolution.expired() ? resolution.expectedCode() : null);
         return otp;
     }

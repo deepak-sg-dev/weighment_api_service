@@ -13,6 +13,7 @@ import com.suguna.weighment_api_service.repository.ScheduleRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import com.suguna.weighment_api_service.util.VehicleRegistrationSupport;
+import com.suguna.weighment_api_service.util.VehicleTypeSupport;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -46,6 +47,13 @@ public class ScheduleVehicleService {
                     ErrorCode.VALIDATION_FAILED,
                     "vehicle number is required (ERP placeholder '-' is not stored)");
         }
+        String vehicleTypeCode = VehicleTypeSupport.toStorageCode(vehicle.getVehicleType());
+        if (vehicle.getVehicleType() != null
+                && !vehicle.getVehicleType().isBlank()
+                && vehicleTypeCode == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "vehicle type must be P (PRIMARY) or S (SECONDARY)");
+        }
         String normalized = ScheduleIdSupport.normalize(scheduleId);
         String supervisorCode = supervisor.getSupervisor().getCode();
         scheduleRepository.updateVehicle(
@@ -54,11 +62,13 @@ public class ScheduleVehicleService {
                 plate,
                 vehicle.getDriverName().trim(),
                 vehicle.getDriverMobile().trim(),
+                vehicleTypeCode,
                 supervisorCode);
         ScheduleVehicleDto dto = new ScheduleVehicleDto();
         dto.setNumber(plate);
         dto.setDriverName(vehicle.getDriverName().trim());
         dto.setDriverMobile(vehicle.getDriverMobile().trim());
+        dto.setVehicleType(VehicleTypeSupport.toApiLabel(vehicleTypeCode));
         return UpdateScheduleVehicleResponse.builder()
                 .success(true)
                 .message("Vehicle updated")

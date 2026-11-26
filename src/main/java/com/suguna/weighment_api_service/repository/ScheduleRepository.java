@@ -44,5 +44,6 @@ public interface ScheduleRepository {
             String vehicleNumber,
             String driverName,
             String driverMobile,
+            String vehicleType,
             String updatedBy);
 }

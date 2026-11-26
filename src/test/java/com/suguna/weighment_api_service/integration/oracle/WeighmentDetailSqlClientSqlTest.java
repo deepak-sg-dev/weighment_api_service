@@ -10,6 +10,7 @@ class WeighmentDetailSqlClientSqlTest {
     void insertSqlIncludesLiveReadingAvg() {
         String sql = WeighmentDetailSqlClient.buildInsertDtlSql();
         assertTrue(sql.contains("LIVE_READING_AVG"));
+        assertTrue(sql.contains("SUG.SUG_MAI_BIRDS_WEIGHMENT_DTL_S.NEXTVAL"));
         assertTrue(sql.matches("(?s).*avg_bird_wt,\\s+LIVE_READING_AVG,\\s+tolerance_status.*"));
     }
 

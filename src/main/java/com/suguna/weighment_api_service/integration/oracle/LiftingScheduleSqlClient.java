@@ -541,6 +541,7 @@ public class LiftingScheduleSqlClient {
             String vehicleNumber,
             String driverName,
             String driverMobile,
+            String vehicleType,
             String updatedBy) {
         String normalizedScheduleId = ScheduleIdSupport.normalize(scheduleId);
         String appCode = erpProperties.getApplicationCode();
@@ -605,7 +606,7 @@ public class LiftingScheduleSqlClient {
         if (updated == 0) {
             throw new ResourceNotFoundException("Schedule", scheduleId);
         }
-        weighmentHeaderSqlClient.updateVehicle(normalizedScheduleId, safeVehicle, safeDriver);
+        weighmentHeaderSqlClient.updateVehicle(normalizedScheduleId, safeVehicle, safeDriver, vehicleType);
     }
 
     private String liftingOrderAuditSetClause() {

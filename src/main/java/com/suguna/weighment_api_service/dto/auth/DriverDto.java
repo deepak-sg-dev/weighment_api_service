@@ -3,6 +3,7 @@ package com.suguna.weighment_api_service.dto.auth;
 import com.suguna.weighment_api_service.auth.DriverVehicleMappingRow;
 import com.suguna.weighment_api_service.domain.SupervisorProfile;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
+import com.suguna.weighment_api_service.util.VehicleTypeSupport;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -35,7 +36,7 @@ public class DriverDto {
                 .id(blankToNull(row.transId()))
                 .name(PROFILE_DISPLAY_NAME)
                 .vehicleNo(blankToNull(row.vehicleNo()))
-                .vehicleType(blankToNull(row.vehicleType()))
+                .vehicleType(VehicleTypeSupport.toApiLabel(row.vehicleType()))
                 .mobile(blankToNull(row.mobileNo()))
                 .deviceId(blankToNull(requestDeviceId))
                 .userType(blankToNull(row.userType()))
@@ -51,7 +52,7 @@ public class DriverDto {
                 .id(profile == null ? null : blankToNull(profile.getId()))
                 .name(PROFILE_DISPLAY_NAME)
                 .vehicleNo(blankToNull(session.getVehicleNo()))
-                .vehicleType(profile == null ? null : blankToNull(profile.getName()))
+                .vehicleType(profile == null ? null : VehicleTypeSupport.toApiLabel(profile.getName()))
                 .mobile(profile == null ? null : blankToNull(profile.getMobile()))
                 .deviceId(blankToNull(session.getDeviceId()))
                 .userType(session.getUserType())

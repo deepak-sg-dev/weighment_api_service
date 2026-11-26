@@ -362,7 +362,7 @@ public class WeighmentDetailSqlClient {
                 created_by,
                 creation_date
             ) VALUES (
-                sug_mai_birds_weighment_dtl_seq.NEXTVAL,
+                SUG.SUG_MAI_BIRDS_WEIGHMENT_DTL_S.NEXTVAL,
                 ?, ?, ?, ?, ?, ?,
                 ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"""

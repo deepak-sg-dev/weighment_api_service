@@ -83,8 +83,9 @@ public class OracleBirdsLiftingScheduleRepository implements ScheduleRepository 
             String vehicleNumber,
             String driverName,
             String driverMobile,
+            String vehicleType,
             String updatedBy) {
         scheduleSqlClient.updateVehicleDetails(
-                supervisorId, scheduleId, vehicleNumber, driverName, driverMobile, updatedBy);
+                supervisorId, scheduleId, vehicleNumber, driverName, driverMobile, vehicleType, updatedBy);
     }
 }

@@ -11,11 +11,6 @@ public final class RetailRetailerOtpSupport {
 
     public static RetailRetailerOtpResolution resolve(
             String dtlOtp, Instant otpExpiresAt, String message, Instant now) {
-        return resolve(dtlOtp, otpExpiresAt, message, now, null);
-    }
-
-    public static RetailRetailerOtpResolution resolve(
-            String dtlOtp, Instant otpExpiresAt, String message, Instant now, String stubWhenUnset) {
         if (dtlOtp != null && !dtlOtp.isBlank()) {
             Instant checkTime = now == null ? Instant.now() : now;
             if (otpExpiresAt != null && checkTime.isAfter(otpExpiresAt)) {
@@ -26,9 +21,6 @@ public final class RetailRetailerOtpSupport {
         Optional<String> fromMessage = extractOtpFromMessage(message);
         if (fromMessage.isPresent()) {
             return RetailRetailerOtpResolution.active(fromMessage.get());
-        }
-        if (stubWhenUnset != null && !stubWhenUnset.isBlank()) {
-            return RetailRetailerOtpResolution.active(stubWhenUnset.trim());
         }
         return RetailRetailerOtpResolution.notConfigured();
     }

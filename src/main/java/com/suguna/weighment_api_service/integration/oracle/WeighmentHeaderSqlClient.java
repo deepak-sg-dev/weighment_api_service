@@ -258,6 +258,7 @@ public class WeighmentHeaderSqlClient {
             UPDATE sug_mai_birds_weighment w
                SET w.vehicle_no = NVL(?, w.vehicle_no),
                    w.dirver_name = NVL(?, w.dirver_name),
+                   w.vehicle_type = NVL(?, w.vehicle_type),
                    w.updated_date = SYSDATE
              WHERE """
                     + WEIGHMENT_INDENT_OR_ORDER_MATCH
@@ -371,16 +372,22 @@ public class WeighmentHeaderSqlClient {
      * (start/PATCH can run before first weighment insert).
      */
     public int updateVehicle(String scheduleId, String vehicleNo, String driverName) {
+        return updateVehicle(scheduleId, vehicleNo, driverName, null);
+    }
+
+    public int updateVehicle(String scheduleId, String vehicleNo, String driverName, String vehicleType) {
         String normalized = ScheduleIdSupport.normalize(scheduleId);
         String plate = blankToNull(vehicleNo);
         String driver = blankToNull(driverName);
-        if (plate == null && driver == null) {
+        String type = blankToNull(vehicleType);
+        if (plate == null && driver == null && type == null) {
             return 0;
         }
         return jdbcTemplate.update(
                 UPDATE_VEHICLE_SQL,
                 plate,
                 driver,
+                type,
                 normalized,
                 normalized,
                 normalized,

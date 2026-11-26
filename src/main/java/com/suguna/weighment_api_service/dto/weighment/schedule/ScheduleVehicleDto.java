@@ -5,6 +5,8 @@ public class ScheduleVehicleDto {
     private String number;
     private String driverName;
     private String driverMobile;
+    /** {@code PRIMARY} or {@code SECONDARY} when set ({@code P}/{@code S} in ERP). */
+    private String vehicleType;
 
     public ScheduleVehicleDto() {}
 
@@ -30,5 +32,13 @@ public class ScheduleVehicleDto {
 
     public void setDriverMobile(String driverMobile) {
         this.driverMobile = driverMobile;
+    }
+
+    public String getVehicleType() {
+        return vehicleType;
+    }
+
+    public void setVehicleType(String vehicleType) {
+        this.vehicleType = vehicleType;
     }
 }

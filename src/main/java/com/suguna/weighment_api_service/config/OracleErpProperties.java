@@ -34,9 +34,6 @@ public class OracleErpProperties {
      */
     private boolean retailOtpValidationEnabled = true;
 
-    /** Expected shop OTP when DTL {@code RETAIL_OTP} is empty (UAT); clear in prod when ERP populates OTP. */
-    private String retailOtpStubCode;
-
     /**
      * When true, retailer id/name/address (and GPS) come from Oracle HZ ship-to site on the OE order
      * ({@code oe_order_headers_all.ship_to_org_id} → {@code hz_cust_site_uses_all}).
@@ -152,14 +149,6 @@ public class OracleErpProperties {
 
     public void setRetailOtpValidationEnabled(boolean retailOtpValidationEnabled) {
         this.retailOtpValidationEnabled = retailOtpValidationEnabled;
-    }
-
-    public String getRetailOtpStubCode() {
-        return retailOtpStubCode;
-    }
-
-    public void setRetailOtpStubCode(String retailOtpStubCode) {
-        this.retailOtpStubCode = retailOtpStubCode;
     }
 
     public boolean isRetailCustomerFromHzSiteEnabled() {

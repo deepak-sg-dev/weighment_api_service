@@ -230,11 +230,7 @@ public class DeliveryWeighmentSqlClient {
         Instant expires = state.otpExpiresAt();
         RetailRetailerOtpResolution resolution =
                 RetailRetailerOtpSupport.resolve(
-                        state.retailOtp(),
-                        expires,
-                        state.message(),
-                        Instant.now(),
-                        erpProperties.getRetailOtpStubCode());
+                        state.retailOtp(), expires, state.message(), Instant.now());
         if (!resolution.configured()) {
             return;
         }
