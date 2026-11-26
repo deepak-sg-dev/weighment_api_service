@@ -1,7 +1,9 @@
 package com.suguna.weighment_api_service.integration.oracle;
 
+import com.suguna.weighment_api_service.config.OracleErpProperties;
 import com.suguna.weighment_api_service.domain.DeliveryCompletedWeighmentHeader;
 import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
+import com.suguna.weighment_api_service.util.InternalBranchCodeSupport;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -29,7 +31,7 @@ public class WeighmentHeaderSqlClient {
             SELECT COUNT(*)
               FROM sug_mai_birds_weighment w
              WHERE """
-            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_EQ
             + ScheduleIdSupport.WEIGHMENT_EXCLUDE_DELIVERY_SOURCE;
 
     static final String FIND_DELIVERY_HEADER_TRANS_ID_SQL =
@@ -37,7 +39,7 @@ public class WeighmentHeaderSqlClient {
             SELECT w.trans_id
               FROM sug_mai_birds_weighment w
              WHERE """
-            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_EQ
             + """
                AND TRIM(w.order_number) = TRIM(?)
                AND UPPER(TRIM(w.source)) = 'DELIVERY'
@@ -100,6 +102,7 @@ public class WeighmentHeaderSqlClient {
                 farm_name,
                 branch_code,
                 bird_type,
+                item_id,
                 ordered_qty,
                 order_number,
                 customer_code,
@@ -129,8 +132,9 @@ public class WeighmentHeaderSqlClient {
                    o.mobileuserempid,
                    o.farmercode,
                    o.farmername,
-                   o.branchcode,
+                   REGEXP_SUBSTR(TRIM(NVL(?, o.cus_location)), '^[^:]+'),
                    NVL(NULLIF(TRIM(o.ordertype), ''), 'BROILER'),
+                   ?,
                    ?,
                    ?,
                    ?,
@@ -149,19 +153,21 @@ public class WeighmentHeaderSqlClient {
                    ?,
                    ?,
                    ?,
-                   'Completed',
+                   'Pending',
                    'DELIVERY',
                    o.order_request_date,
                    SYSDATE,
                    SYSDATE
               FROM sug_mai_birds_lifting_order o
               LEFT JOIN (
-            """
-            + HZ_SHOP_CUSTOMER_SQL
-            + """
+                SELECT CAST(NULL AS VARCHAR2(400)) AS customer_name,
+                       CAST(NULL AS VARCHAR2(4000)) AS address,
+                       CAST(NULL AS NUMBER) AS retailer_latitude,
+                       CAST(NULL AS NUMBER) AS retailer_longitude
+                  FROM dual
               ) hz ON 1 = 1
              WHERE """
-            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_EQ
             + """
                AND """
             + ORDER_SUPERVISOR_MATCH
@@ -170,7 +176,7 @@ public class WeighmentHeaderSqlClient {
                     SELECT 1
                       FROM sug_mai_birds_weighment w
                      WHERE """
-            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_EQ
             + """
                        AND TRIM(w.order_number) = TRIM(?)
                        AND UPPER(TRIM(w.source)) = 'DELIVERY'
@@ -187,8 +193,12 @@ public class WeighmentHeaderSqlClient {
                 farm_name,
                 branch_code,
                 bird_type,
+                item_id,
                 ordered_qty,
                 order_number,
+                customer_code,
+                customer_name,
+                customer_location,
                 vehicle_no,
                 dirver_name,
                 status,
@@ -202,10 +212,14 @@ public class WeighmentHeaderSqlClient {
                    o.mobileuserempid,
                    o.farmercode,
                    NVL(f.farm_name_village, o.farmername),
-                   o.branchcode,
+                   REGEXP_SUBSTR(TRIM(o.branchcode), '^[^:]+'),
                    NVL(NULLIF(TRIM(o.ordertype), ''), 'BROILER'),
+                   ?,
                    NVL(o.no_of_birds, 0),
                    TO_CHAR(o.ordernumber),
+                   TO_CHAR(o.customercode),
+                   o.cus_name,
+                   o.cus_location,
                    o.vehicleno,
                    o.driver,
                    'Pending',
@@ -217,7 +231,7 @@ public class WeighmentHeaderSqlClient {
               LEFT JOIN sug_farm_mst_header f
                 ON TRIM(f.farm_code) = TRIM(o.farmercode)
              WHERE """
-            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_EQ
             + """
                AND """
             + ORDER_SUPERVISOR_MATCH;
@@ -265,9 +279,11 @@ public class WeighmentHeaderSqlClient {
                     + ScheduleIdSupport.WEIGHMENT_EXCLUDE_DELIVERY_SOURCE;
 
     private final JdbcTemplate jdbcTemplate;
+    private final OracleErpProperties erpProperties;
 
-    public WeighmentHeaderSqlClient(JdbcTemplate jdbcTemplate) {
+    public WeighmentHeaderSqlClient(JdbcTemplate jdbcTemplate, OracleErpProperties erpProperties) {
         this.jdbcTemplate = jdbcTemplate;
+        this.erpProperties = erpProperties;
     }
 
     public void ensureHeaderForSchedule(String scheduleId, String supervisorCode) {
@@ -275,15 +291,14 @@ public class WeighmentHeaderSqlClient {
         Integer count = jdbcTemplate.queryForObject(
                 COUNT_HEADER_BY_SCHEDULE_SQL,
                 Integer.class,
-                normalizedScheduleId,
-                normalizedScheduleId);
+                ScheduleIdSupport.erpIndentBind(normalizedScheduleId));
         if (count != null && count > 0) {
             return;
         }
         int inserted = jdbcTemplate.update(
                 INSERT_HEADER_FROM_ORDER_SQL,
-                normalizedScheduleId,
-                normalizedScheduleId,
+                weighmentItemId(),
+                ScheduleIdSupport.erpIndentBind(normalizedScheduleId),
                 supervisorCode,
                 supervisorCode);
         if (inserted == 0) {
@@ -302,8 +317,11 @@ public class WeighmentHeaderSqlClient {
         String supervisorCode = header.getSupervisorCode();
         String customerCode = blankToNull(header.getCustomerCode());
         String customerName = blankToNull(header.getCustomerName());
+        Long scheduleNo = ScheduleIdSupport.erpIndentBind(scheduleId);
         int inserted = jdbcTemplate.update(
                 INSERT_COMPLETED_DELIVERY_HEADER_SQL,
+                InternalBranchCodeSupport.fromLabel(header.getBranchCode()),
+                weighmentItemId(),
                 header.getOrderedQty(),
                 orderNo,
                 customerCode,
@@ -319,17 +337,14 @@ public class WeighmentHeaderSqlClient {
                 timestamp(header.getWmStartTime()),
                 timestamp(header.getWmEndTime()),
                 blankToNull(header.getManualDcNo()),
-                customerCode,
-                scheduleId,
-                scheduleId,
+                scheduleNo,
                 supervisorCode,
                 supervisorCode,
-                scheduleId,
-                scheduleId,
+                scheduleNo,
                 orderNo);
         Long transId = findDeliveryHeaderTransId(scheduleId, orderNo);
         if (transId != null) {
-            if (inserted == 0) {
+            if (inserted > 0 && customerName == null) {
                 fillDeliveryCustomer(transId, customerCode, customerName);
             }
             return transId;
@@ -357,8 +372,7 @@ public class WeighmentHeaderSqlClient {
         List<Long> ids = jdbcTemplate.query(
                 FIND_DELIVERY_HEADER_TRANS_ID_SQL,
                 (rs, rowNum) -> rs.getLong("trans_id"),
-                normalized,
-                normalized,
+                ScheduleIdSupport.erpIndentBind(normalized),
                 orderNo);
         return ids.isEmpty() ? null : ids.get(0);
     }
@@ -392,6 +406,11 @@ public class WeighmentHeaderSqlClient {
                 normalized,
                 normalized,
                 normalized);
+    }
+
+    private Long weighmentItemId() {
+        Long itemId = erpProperties.getWeighmentItemId();
+        return itemId == null ? 26001L : itemId;
     }
 
     private static String blankToNull(String value) {

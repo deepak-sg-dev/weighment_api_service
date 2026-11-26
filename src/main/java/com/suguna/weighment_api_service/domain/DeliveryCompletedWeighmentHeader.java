@@ -20,6 +20,8 @@ public class DeliveryCompletedWeighmentHeader {
     private String retailOrderNo;
     private String customerCode;
     private String customerName;
+    /** Retail internal branch (e.g. {@code MR1}), not the farm branch. */
+    private String branchCode;
     private Double orderedQty;
     private Integer noOfBirds;
     private Integer noOfCages;

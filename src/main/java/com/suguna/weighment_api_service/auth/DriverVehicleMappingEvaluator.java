@@ -51,7 +51,7 @@ public final class DriverVehicleMappingEvaluator {
                 .orElse(null);
     }
 
-    static boolean deviceMatches(String compactRequestDevice, DriverVehicleMappingRow row) {
+    public static boolean deviceMatches(String compactRequestDevice, DriverVehicleMappingRow row) {
         if (compactRequestDevice == null || compactRequestDevice.isEmpty()) {
             return false;
         }
@@ -60,7 +60,7 @@ public final class DriverVehicleMappingEvaluator {
                 || compactRequestDevice.equalsIgnoreCase(compactDevice(row.deviceId2()));
     }
 
-    static boolean isDriver(DriverVehicleMappingRow row) {
+    public static boolean isDriver(DriverVehicleMappingRow row) {
         String type = row.userType() == null ? "" : row.userType().trim().toUpperCase(Locale.ROOT);
         return "DRIVER".equals(type);
     }

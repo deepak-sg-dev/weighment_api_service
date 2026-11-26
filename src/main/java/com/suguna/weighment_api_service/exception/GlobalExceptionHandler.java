@@ -201,15 +201,41 @@ public class GlobalExceptionHandler {
 
     }
 
+    @ExceptionHandler(NullPointerException.class)
+    public ResponseEntity<CommonApiResponse<Void>> handleNullPointer(
+            NullPointerException ex, WebRequest request) {
+        log.error("Null pointer on {}", resolveRequestPath(request), ex);
+        String message = responseProperties.isMaskInternalErrors()
+                ? ErrorCode.INTERNAL_ERROR.getDefaultMessage()
+                : (ex.getMessage() == null ? ErrorCode.INTERNAL_ERROR.getDefaultMessage() : ex.getMessage());
+        return buildErrorResponse(
+                ErrorCode.INTERNAL_ERROR.getHttpStatus(),
+                ErrorCode.INTERNAL_ERROR.getErrorCode(),
+                message,
+                Map.of(),
+                request);
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<CommonApiResponse<Void>> handleRuntimeException(
             RuntimeException ex,
             WebRequest request) {
-
+        if (ex.getClass() == RuntimeException.class) {
+            return buildErrorResponse(
+                    HttpStatus.UNAUTHORIZED,
+                    "INVALID_CREDENTIALS",
+                    ex.getMessage(),
+                    Map.of(),
+                    request);
+        }
+        log.error("Unhandled runtime exception on {}", resolveRequestPath(request), ex);
+        String message = responseProperties.isMaskInternalErrors()
+                ? ErrorCode.INTERNAL_ERROR.getDefaultMessage()
+                : (ex.getMessage() == null ? ErrorCode.INTERNAL_ERROR.getDefaultMessage() : ex.getMessage());
         return buildErrorResponse(
-                HttpStatus.UNAUTHORIZED,
-                "INVALID_CREDENTIALS",
-                ex.getMessage(),
+                ErrorCode.INTERNAL_ERROR.getHttpStatus(),
+                ErrorCode.INTERNAL_ERROR.getErrorCode(),
+                message,
                 Map.of(),
                 request);
     }

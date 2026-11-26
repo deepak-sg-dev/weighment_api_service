@@ -182,7 +182,7 @@ public class LiftingScheduleSqlClient {
                    o.updated_at = SYSDATE,
                    o.updated_by = ?
              WHERE """
-            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH
+            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_EQ
             + """
                AND """
             + ORDER_SUPERVISOR_MATCH;
@@ -684,8 +684,7 @@ public class LiftingScheduleSqlClient {
                 COMPLETE_LIFTING_AFTER_WEIGHMENT_SQL,
                 saleToken,
                 trimUpdatedBy(supervisorCode),
-                normalizedScheduleId,
-                normalizedScheduleId,
+                ScheduleIdSupport.erpIndentBind(normalizedScheduleId),
                 supervisorCode,
                 supervisorCode);
     }

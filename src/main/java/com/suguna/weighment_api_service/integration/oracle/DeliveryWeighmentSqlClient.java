@@ -290,6 +290,7 @@ public class DeliveryWeighmentSqlClient {
                         .retailOrderNo(orderId)
                         .customerCode(order.getRetailerId())
                         .customerName(order.getRetailerName())
+                        .branchCode(firstNonBlank(schedule.getRetailBranchCode(), order.getBranchCode()))
                         .orderedQty(order.getOrderedQuantity());
         if (request != null) {
             var totals = request.getTotals();
@@ -560,6 +561,16 @@ public class DeliveryWeighmentSqlClient {
         if (!expected.equals(provided)) {
             throw new ConflictException(ErrorCode.CONFLICT, "customer.customerCode does not match retail order");
         }
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first.trim();
+        }
+        if (second != null && !second.isBlank()) {
+            return second.trim();
+        }
+        return null;
     }
 
     private static String serializePayload(SubmitDeliveryWeighmentRequest request) {

@@ -70,7 +70,7 @@ public class AuthService {
             throw new ApiException(ErrorCode.SUPERVISOR_INACTIVE);
         }
 
-        String accessToken = jwtService.generateAccessToken(registration.getDeviceId(), supervisor);
+        String accessToken = jwtService.generateAccessToken(request.getDeviceId().trim(), supervisor);
         recordLoginAudit(request, supervisor.getCode());
         return DeviceLoginResponse.builder()
                 .success(true)

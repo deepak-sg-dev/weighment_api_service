@@ -31,7 +31,7 @@ public class WeighmentDetailSqlClient {
             SELECT w.trans_id
               FROM sug_mai_birds_weighment w
              WHERE """
-            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_EQ
             + ScheduleIdSupport.WEIGHMENT_EXCLUDE_DELIVERY_SOURCE
             + """
              ORDER BY w.updated_date DESC NULLS LAST
@@ -43,7 +43,7 @@ public class WeighmentDetailSqlClient {
             SELECT NVL(o.source, 'LIFTING') AS order_source
               FROM sug_mai_birds_lifting_order o
              WHERE """
-            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_MATCH;
+            + ScheduleIdSupport.LIFTING_ORDER_ERP_INDENT_EQ;
 
     private static final String COUNT_DTL_SQL =
             """
@@ -129,8 +129,7 @@ public class WeighmentDetailSqlClient {
         List<Long> ids = jdbcTemplate.query(
                 RESOLVE_TRANS_ID_SQL,
                 (rs, rowNum) -> rs.getLong("trans_id"),
-                normalizedScheduleId,
-                normalizedScheduleId);
+                ScheduleIdSupport.erpIndentBind(normalizedScheduleId));
         return ids.stream().findFirst();
     }
 
@@ -433,8 +432,7 @@ public class WeighmentDetailSqlClient {
         List<String> sources = jdbcTemplate.query(
                 RESOLVE_LIFTING_SOURCE_SQL,
                 (rs, rowNum) -> rs.getString("order_source"),
-                normalizedScheduleId,
-                normalizedScheduleId);
+                ScheduleIdSupport.erpIndentBind(normalizedScheduleId));
         if (!sources.isEmpty() && sources.get(0) != null) {
             String source = sources.get(0).trim().toUpperCase(Locale.ROOT);
             if ("RETAIL".equals(source)) {

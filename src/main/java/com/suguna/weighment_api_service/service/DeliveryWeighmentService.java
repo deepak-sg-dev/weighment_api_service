@@ -23,6 +23,7 @@ import com.suguna.weighment_api_service.exception.BusinessValidationException;
 import com.suguna.weighment_api_service.repository.DeliveryWeighmentRepository;
 import com.suguna.weighment_api_service.repository.RetailDeliveryRepository;
 import com.suguna.weighment_api_service.security.AuthenticatedSupervisor;
+import com.suguna.weighment_api_service.security.DeviceSessionValidator;
 import com.suguna.weighment_api_service.storage.WeighmentImageCategory;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import java.time.Instant;
@@ -46,6 +47,7 @@ public class DeliveryWeighmentService {
     private final ScheduleAccessService scheduleAccessService;
     private final ScheduleWorkflowService scheduleWorkflowService;
     private final ApiV2Properties apiV2Properties;
+    private final DeviceSessionValidator deviceSessionValidator;
 
     public DeliveryWeighmentService(
             DeliveryWeighmentRepository deliveryWeighmentRepository,
@@ -54,7 +56,8 @@ public class DeliveryWeighmentService {
             OracleErpProperties erpProperties,
             ScheduleAccessService scheduleAccessService,
             ScheduleWorkflowService scheduleWorkflowService,
-            ApiV2Properties apiV2Properties) {
+            ApiV2Properties apiV2Properties,
+            DeviceSessionValidator deviceSessionValidator) {
         this.deliveryWeighmentRepository = deliveryWeighmentRepository;
         this.retailDeliveryRepository = retailDeliveryRepository;
         this.imageUploadService = imageUploadService;
@@ -62,6 +65,7 @@ public class DeliveryWeighmentService {
         this.scheduleAccessService = scheduleAccessService;
         this.scheduleWorkflowService = scheduleWorkflowService;
         this.apiV2Properties = apiV2Properties;
+        this.deviceSessionValidator = deviceSessionValidator;
     }
 
     @Transactional(timeout = 20)
@@ -294,9 +298,7 @@ public class DeliveryWeighmentService {
     }
 
     private void validateDevice(AuthenticatedSupervisor supervisor, String deviceId) {
-        if (deviceId == null || !supervisor.getDeviceId().equals(deviceId.trim())) {
-            throw new ApiException(ErrorCode.BAD_REQUEST, "deviceId does not match authenticated session");
-        }
+        deviceSessionValidator.requireMatches(supervisor, deviceId);
     }
 
     private void validateSupervisor(AuthenticatedSupervisor supervisor, String supervisorId) {

@@ -469,6 +469,7 @@ public class RetailDeliverySqlClient {
                 .retailOrderNo(retailOrderId)
                 .customerCode(request.getRetailerId() != null ? request.getRetailerId() : row.customerCode())
                 .customerName(row.customerName())
+                .branchCode(firstNonBlank(schedule.getRetailBranchCode(), row.branchCode()))
                 .orderedQty(row.weight())
                 .noOfBirds(request.getDeliveredBirdCount())
                 .netWt(request.getDeliveredWeight())
@@ -923,6 +924,16 @@ public class RetailDeliverySqlClient {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first.trim();
+        }
+        if (second != null && !second.isBlank()) {
+            return second.trim();
+        }
+        return null;
     }
 
     private static Double readNullableDouble(ResultSet rs, String column) throws SQLException {

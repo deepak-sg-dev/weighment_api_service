@@ -5,9 +5,12 @@ import com.suguna.weighment_api_service.dto.transaction.SubmitCompletedWeighment
 import com.suguna.weighment_api_service.dto.transaction.TransactionAcknowledgementResponse;
 import com.suguna.weighment_api_service.dto.transaction.TransactionCorrectionRequest;
 import com.suguna.weighment_api_service.dto.transaction.TransactionRetryRequest;
+import com.suguna.weighment_api_service.config.OracleErpProperties;
 import com.suguna.weighment_api_service.exception.ResourceNotFoundException;
 import com.suguna.weighment_api_service.util.ScheduleIdSupport;
 import com.suguna.weighment_api_service.util.WeighmentSubmitKeys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -24,6 +27,7 @@ import java.util.Optional;
 @Component
 public class TransactionSqlClient {
 
+    private static final Logger log = LoggerFactory.getLogger(TransactionSqlClient.class);
     private static final DateTimeFormatter ISO_INSTANT = DateTimeFormatter.ISO_INSTANT;
     private static final String RECEIVED_STATUS = "RECEIVED";
 
@@ -49,7 +53,7 @@ public class TransactionSqlClient {
                    TO_CHAR(w.schedule_no) AS schedule_no
               FROM sug_mai_birds_weighment w
              WHERE """
-            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_EQ
             + ScheduleIdSupport.WEIGHMENT_EXCLUDE_DELIVERY_SOURCE
             + """
              ORDER BY w.updated_date DESC NULLS LAST
@@ -76,7 +80,34 @@ public class TransactionSqlClient {
                    w.wm_end_time = NVL(?, w.wm_end_time),
                    w.vehicle_outtime = NVL(?, w.vehicle_outtime),
                    w.wm_supervisor_code = ?,
-                   w.status = ?,
+                   w.status = 'Pending',
+                   w.item_id = NVL(?, w.item_id),
+                   w.customer_code = NVL(
+                       NULLIF(TRIM(w.customer_code), ''),
+                       (SELECT TO_CHAR(o.customercode)
+                          FROM sug_mai_birds_lifting_order o
+                         WHERE o.erpindentid = TO_CHAR(w.schedule_no)
+                           AND ROWNUM = 1)),
+                   w.customer_name = NVL(
+                       NULLIF(TRIM(w.customer_name), ''),
+                       (SELECT o.cus_name
+                          FROM sug_mai_birds_lifting_order o
+                         WHERE o.erpindentid = TO_CHAR(w.schedule_no)
+                           AND ROWNUM = 1)),
+                   w.customer_location = NVL(
+                       NULLIF(TRIM(w.customer_location), ''),
+                       (SELECT o.cus_location
+                          FROM sug_mai_birds_lifting_order o
+                         WHERE o.erpindentid = TO_CHAR(w.schedule_no)
+                           AND ROWNUM = 1)),
+                   w.branch_code = REGEXP_SUBSTR(
+                       TRIM(NVL(
+                           w.branch_code,
+                           (SELECT o.branchcode
+                              FROM sug_mai_birds_lifting_order o
+                             WHERE o.erpindentid = TO_CHAR(w.schedule_no)
+                               AND ROWNUM = 1))),
+                       '^[^:]+'),
                    w.manual_dc_no = ?,
                    w.remarks = ?,
                    w.bird_stock_nos = NVL(?, w.bird_stock_nos),
@@ -85,7 +116,7 @@ public class TransactionSqlClient {
                    w.abortcount = 0,
                    w.updated_date = SYSDATE
              WHERE """
-            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_EQ
             + ScheduleIdSupport.WEIGHMENT_EXCLUDE_DELIVERY_SOURCE;
 
     private static final String SUBMISSION_HEADER_SQL =
@@ -112,7 +143,7 @@ public class TransactionSqlClient {
                    w.feed_stock_bags
               FROM sug_mai_birds_weighment w
              WHERE """
-            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_MATCH
+            + ScheduleIdSupport.WEIGHMENT_SCHEDULE_NO_EQ
             + ScheduleIdSupport.WEIGHMENT_EXCLUDE_DELIVERY_SOURCE
             + """
              ORDER BY w.updated_date DESC NULLS LAST
@@ -175,16 +206,19 @@ public class TransactionSqlClient {
     private final WeighmentDetailSqlClient weighmentDetailSqlClient;
     private final WeighmentHeaderSqlClient weighmentHeaderSqlClient;
     private final LiftingScheduleSqlClient liftingScheduleSqlClient;
+    private final OracleErpProperties erpProperties;
 
     public TransactionSqlClient(
             JdbcTemplate jdbcTemplate,
             WeighmentDetailSqlClient weighmentDetailSqlClient,
             WeighmentHeaderSqlClient weighmentHeaderSqlClient,
-            LiftingScheduleSqlClient liftingScheduleSqlClient) {
+            LiftingScheduleSqlClient liftingScheduleSqlClient,
+            OracleErpProperties erpProperties) {
         this.jdbcTemplate = jdbcTemplate;
         this.weighmentDetailSqlClient = weighmentDetailSqlClient;
         this.weighmentHeaderSqlClient = weighmentHeaderSqlClient;
         this.liftingScheduleSqlClient = liftingScheduleSqlClient;
+        this.erpProperties = erpProperties;
     }
 
     public Optional<StoredTransaction> findByScheduleId(String scheduleId, String supervisorCode) {
@@ -199,8 +233,7 @@ public class TransactionSqlClient {
                                 rs.getTimestamp("updated_date"),
                                 rs.getString("manual_dc_no"),
                                 rs.getString("schedule_no")),
-                normalizedScheduleId,
-                normalizedScheduleId);
+                ScheduleIdSupport.erpIndentBind(normalizedScheduleId));
         return rows.stream().findFirst();
     }
 
@@ -213,8 +246,7 @@ public class TransactionSqlClient {
         List<SubmissionHeaderSnapshot> rows = jdbcTemplate.query(
                 SUBMISSION_HEADER_SQL,
                 (rs, rowNum) -> mapSubmissionHeader(rs),
-                normalizedScheduleId,
-                normalizedScheduleId);
+                ScheduleIdSupport.erpIndentBind(normalizedScheduleId));
         return rows.stream().findFirst();
     }
 
@@ -291,13 +323,13 @@ public class TransactionSqlClient {
                         : null;
 
         String normalizedScheduleId = ScheduleIdSupport.normalize(request.getScheduleId());
+        Long scheduleNo = ScheduleIdSupport.erpIndentBind(normalizedScheduleId);
         String transactionKey = WeighmentSubmitKeys.transactionKey(normalizedScheduleId);
         String remarks = formatRemarks(normalizedScheduleId, request, completion);
         Timestamp wmStart = toTimestamp(completion == null ? null : completion.getWeighingStartTime());
         Timestamp wmEnd = toTimestamp(completion == null ? null : completion.getOutTime());
         Timestamp vehicleOut = wmEnd;
-
-        weighmentHeaderSqlClient.ensureHeaderForSchedule(normalizedScheduleId, supervisorCode);
+        long started = System.nanoTime();
 
         int updated = jdbcTemplate.update(
                 SUBMIT_UPDATE_SQL,
@@ -318,13 +350,41 @@ public class TransactionSqlClient {
                 wmEnd,
                 vehicleOut,
                 supervisorCode,
-                erpStatus,
+                weighmentItemId(),
                 normalizedScheduleId,
                 remarks,
                 healthyBirdsCount,
                 feedStockBags,
-                normalizedScheduleId,
-                normalizedScheduleId);
+                scheduleNo);
+
+        if (updated == 0) {
+            weighmentHeaderSqlClient.ensureHeaderForSchedule(normalizedScheduleId, supervisorCode);
+            updated = jdbcTemplate.update(
+                    SUBMIT_UPDATE_SQL,
+                    totals.getTotalBirds(),
+                    totals.getTotalCagesOrBatches(),
+                    totals.getTotalTare(),
+                    totals.getTotalGross(),
+                    totals.getTotalNet(),
+                    totals.getOverallAverageBirdWeight(),
+                    farm.getCapturedLatitude(),
+                    farm.getCapturedLongitude(),
+                    vehicle == null ? null : vehicle.getRegistrationNumber(),
+                    vehicle == null ? null : vehicle.getDriverName(),
+                    scale == null ? null : scale.getDeviceId(),
+                    request.effectiveBirdType(),
+                    request.getPlannedQuantity(),
+                    wmStart,
+                    wmEnd,
+                    vehicleOut,
+                    supervisorCode,
+                    weighmentItemId(),
+                    normalizedScheduleId,
+                    remarks,
+                    healthyBirdsCount,
+                    feedStockBags,
+                    scheduleNo);
+        }
 
         if (updated == 0) {
             throw new ResourceNotFoundException(
@@ -358,6 +418,12 @@ public class TransactionSqlClient {
         StoredTransaction stored = findByScheduleId(normalizedScheduleId, supervisorCode)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Weighment transaction not found after submit for schedule " + normalizedScheduleId));
+        long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
+        if (elapsedMs > 1_000L) {
+            log.warn("weighment complete submit schedule={} took {} ms", normalizedScheduleId, elapsedMs);
+        } else {
+            log.info("weighment complete submit schedule={} took {} ms", normalizedScheduleId, elapsedMs);
+        }
         return toSubmitResponse(stored, normalizedScheduleId);
     }
 
@@ -386,6 +452,11 @@ public class TransactionSqlClient {
         if (updated == 0) {
             throw new ResourceNotFoundException("Transaction", transactionId);
         }
+    }
+
+    private Long weighmentItemId() {
+        Long itemId = erpProperties.getWeighmentItemId();
+        return itemId == null ? 26001L : itemId;
     }
 
     static String formatRemarks(

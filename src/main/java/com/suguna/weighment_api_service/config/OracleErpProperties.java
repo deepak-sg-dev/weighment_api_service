@@ -71,6 +71,11 @@ public class OracleErpProperties {
      */
     private Long dcRegisteredOfficeLedgerId = 2025L;
 
+    /**
+     * {@code SUG_MAI_BIRDS_WEIGHMENT.ITEM_ID} on lifting and delivery header rows (ERP live-bird item).
+     */
+    private Long weighmentItemId = 26001L;
+
     public String getApplicationCode() {
         return applicationCode;
     }
@@ -219,5 +224,13 @@ public class OracleErpProperties {
 
     public void setDcRegisteredOfficeLedgerId(Long dcRegisteredOfficeLedgerId) {
         this.dcRegisteredOfficeLedgerId = dcRegisteredOfficeLedgerId;
+    }
+
+    public Long getWeighmentItemId() {
+        return weighmentItemId;
+    }
+
+    public void setWeighmentItemId(Long weighmentItemId) {
+        this.weighmentItemId = weighmentItemId;
     }
 }

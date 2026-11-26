@@ -23,6 +23,21 @@ public final class ScheduleIdSupport {
               OR TO_CHAR(w.schedule_no) = REGEXP_SUBSTR(TRIM(?), '^[^/]+'))
             """;
 
+    /**
+     * Index-friendly weighment lookup. Bind {@link #erpIndentBind(String)} once. Prefer this on submit
+     * paths; {@link #WEIGHMENT_SCHEDULE_NO_MATCH} cannot use an index on {@code schedule_no}.
+     */
+    public static final String WEIGHMENT_SCHEDULE_NO_EQ = " w.schedule_no = ? ";
+
+    /**
+     * Index-friendly lifting indent lookup. Bind {@link #erpIndentBind(String)} once.
+     */
+    /**
+     * {@code erpindentid} is VARCHAR2. Bind {@link #erpIndentBind(String)} (number) via {@code TO_CHAR}
+     * so Oracle does not {@code TO_NUMBER} every indent (ORA-01722 on composite / non-numeric ids).
+     */
+    public static final String LIFTING_ORDER_ERP_INDENT_EQ = " o.erpindentid = TO_CHAR(?) ";
+
     /** Farm lifting header only — delivery complete inserts extra rows with {@code source = DELIVERY}. */
     public static final String WEIGHMENT_EXCLUDE_DELIVERY_SOURCE =
             " AND NVL(UPPER(TRIM(w.source)), 'X') <> 'DELIVERY' ";
@@ -70,5 +85,11 @@ public final class ScheduleIdSupport {
     public static Object[] scheduleIdBinds(String scheduleId) {
         String normalized = normalize(scheduleId);
         return new Object[] {normalized, normalized};
+    }
+
+    /** Numeric indent for {@link #WEIGHMENT_SCHEDULE_NO_EQ} / {@link #LIFTING_ORDER_ERP_INDENT_EQ}. */
+    public static Long erpIndentBind(String scheduleId) {
+        long indent = parseErpIndentAsLong(scheduleId);
+        return indent == 0L ? null : indent;
     }
 }
