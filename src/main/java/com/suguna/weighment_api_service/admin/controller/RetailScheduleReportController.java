@@ -2,7 +2,7 @@ package com.suguna.weighment_api_service.admin.controller;
 
 import com.suguna.weighment_api_service.admin.dtos.requests.RetailScheduleFilterRequest;
 import com.suguna.weighment_api_service.admin.dtos.responses.RetailScheduleReportResponse;
-import com.suguna.weighment_api_service.admin.services.RetailScheduleReportService;
+import com.suguna.weighment_api_service.admin.services.RetailScheduleReport_1Service;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
@@ -21,7 +21,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RetailScheduleReportController {
 
-    private final RetailScheduleReportService retailScheduleReportService;
+    private final RetailScheduleReport_1Service retailScheduleReportService;
 
     @GetMapping
     public ResponseEntity<List<RetailScheduleReportResponse>> getRetailScheduleReport(
