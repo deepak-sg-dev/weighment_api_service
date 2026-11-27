@@ -3,7 +3,6 @@ package com.suguna.weighment_api_service.admin.Projection;
 import java.math.BigDecimal;
 
 public interface RetailScheduleReportProjection {
-
     String getScheduleDate();
     String getBranchName();
     String getSupervisor();

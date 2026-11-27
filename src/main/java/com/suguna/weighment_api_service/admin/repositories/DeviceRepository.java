@@ -56,4 +56,6 @@ public interface DeviceRepository
             BigDecimal organizationId,
             String androidId,
             Pageable pageable);
+    Optional<Device> findFirstByEmpCode(
+            String empCode);
 }

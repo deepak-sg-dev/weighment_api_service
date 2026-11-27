@@ -15,6 +15,8 @@ public class SupervisorResponseDTO {
 
     private Long branchId;
 
+    private String branchName;
+
     private String mobile;
 
     private String deviceImei;
